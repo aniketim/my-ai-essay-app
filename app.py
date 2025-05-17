@@ -382,9 +382,10 @@ def get_gemini_assessment(title, essay_markdown):
     """
     response = None # Initialize response to None
     response_text = None # Initialize response_text to None
+
     try:
-        response = gemini_model.generate_content(prompt)
-        response_text = response.text # This line might fail if response is not as expected
+        response = gemini_model.generate_content(prompt) # This is the line that might raise an error before assigning to response
+        response_text = response.text # This line might also fail if response doesn't have .text
 
         # Keep the JSON parsing logic the same - it seems robust
         if response_text is not None: # Add a check here before trying to parse
@@ -406,10 +407,13 @@ def get_gemini_assessment(title, essay_markdown):
              return {"error": "AI response text is empty or missing."}
 
     except json.JSONDecodeError as e:
-        print(f"Error decoding JSON from AI: {e}. Raw response: {response_text}") # Use response_text if available
-        raw_resp_info = response_text if response_text is not None else str(response) # Provide raw info if possible
+        # This block is reached if JSON decoding fails *after* response_text is assigned
+        print(f"Error decoding JSON from AI: {e}. Raw response: {response_text}") # response_text should be available here
+        raw_resp_info = response_text if response_text is not None else "Response text was None"
         return {"error": f"AI feedback parsing error: {e}", "raw_response": raw_resp_info} # Simplified error
+
     except Exception as e:
+        # *** This block is reached for any other exception during generate_content or response.text access ***
         print(f"Error getting assessment from Gemini: {e}") # Log detailed error
         error_details = str(e)
         raw_resp_info = None
@@ -417,14 +421,17 @@ def get_gemini_assessment(title, essay_markdown):
         if hasattr(e, 'response') and hasattr(e.response, 'prompt_feedback'):
             print(f"Gemini API Prompt Feedback: {e.response.prompt_feedback}") # Log prompt feedback
             error_details = f"AI API error: {e.response.prompt_feedback}"
-        elif response is not None and hasattr(response, 'text'):
+            if hasattr(e.response, 'text'): # Check if the error response has text
+                 raw_resp_info = e.response.text
+        elif response is not None and hasattr(response, 'text'): # Check if original response was assigned and has text
              raw_resp_info = response.text # Get text from response if exception happened later
 
         return {"error": error_details, "raw_response": raw_resp_info} # Simplified error with details
 
+
 def process_and_submit_essay(student_user_id, title, essay_content_html):
     if student_user_id is None:
-         print(f"[{datetime.now()}] save_essay_submission called with student_user_id = None. This is unexpected.") # Debug print
+         print(f"[{datetime.now()}] save_essay_submission called with user_id = None. This is unexpected.") # Debug print
          st.error("Could not save essay: User session issue. Please try logging out and in again.") # Simplified user error
          return
     if not title.strip():
@@ -460,16 +467,14 @@ def process_and_submit_essay(student_user_id, title, essay_content_html):
         # If feedback data is not valid JSON or has an error, store the raw or error state
         if isinstance(ai_feedback_data, dict):
              ai_feedback_json_str = json.dumps(ai_feedback_data) # Save the error/raw response if it's a dict
+        else: # Handle cases where ai_feedback_data is not a dict (e.g., None from an error)
+             ai_feedback_json_str = json.dumps({"error": "AI feedback data is not a valid structure."})
+
 
     # Save the essay regardless of AI feedback success, if content and title are valid
     # save_essay_submission is now defined BEFORE this function
-    # Added a safety check to ensure save_essay_submission is defined before calling it
-    if 'save_essay_submission' in globals() and callable(save_essay_submission):
-        save_essay_submission(student_user_id, title, essay_markdown, ai_feedback_json_str, overall_rating)
-    else:
-        print(f"[{datetime.now()}] CRITICAL ERROR: save_essay_submission function is not defined when called!")
-        st.error("🚨 Critical error: Could not save essay due to an internal issue.")
-
+    # Removed the callable check as it seems to be part of the issue, relying on definition order
+    save_essay_submission(student_user_id, title, essay_markdown, ai_feedback_json_str, overall_rating)
 
     # Reset state for next essay
     st.session_state.essay_started = False
@@ -492,7 +497,7 @@ if 'current_college_name' not in st.session_state: st.session_state.current_coll
 if 'essay_title_input' not in st.session_state: st.session_state.essay_title_input = ""
 if 'essay_content_html' not in st.session_state: st.session_state.essay_content_html = ""
 if 'essay_started' not in st.session_state: st.session_state.essay_started = False
-if 'timer_start_time' not in st.session_state: st.session_state.timer_time = None
+if 'timer_start_time' not in st.session_state: st.session_state.timer_start_time = None
 if 'submission_time_limit_seconds' not in st.session_state: st.session_state.submission_time_limit_seconds = 15 * 60
 
 
