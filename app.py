@@ -502,6 +502,9 @@ with st.sidebar:
         # Sidebar navigation for logged-in users
         if st.session_state.user_type == 'student':
              # Student navigation
+             if st.button("👤 Edit Profile", use_container_width=True, key="nav_edit_profile"):
+                 st.session_state.view = 'student_profile'
+                 st.rerun()
              if st.button("✍️ Start New Essay", use_container_width=True, key="nav_new_essay"):
                   st.session_state.view = 'student_essay'
                   # Reset essay state when navigating to start a new one
@@ -582,6 +585,16 @@ if not st.session_state.logged_in:
                         else: st.warning("Please fill all fields.")
 
 else: # User is logged in
+    # Fetch profile info *at the start* of the logged-in section for potential use across student views
+    # Admin views don't need profile info, but fetching here is safe
+    student_profile = None
+    profile_incomplete = False
+    if st.session_state.user_type == 'student' and st.session_state.current_user_id is not None:
+         student_profile = get_student_profile(st.session_state.current_user_id)
+         if student_profile is None or not (student_profile.get('full_name') and student_profile.get('department')):
+             profile_incomplete = True
+
+
     # Simplified Admin Views
     if st.session_state.user_type == 'super_admin':
         if st.session_state.view == 'super_admin_manage':
@@ -758,7 +771,7 @@ else: # User is logged in
 
     elif st.session_state.user_type == 'student':
         # Student flow: Profile -> Essay -> Dashboard (Past Submissions)
-        # Fetch profile here to determine if the profile is incomplete for display logic if needed
+        # Fetch profile info *at the start* of the student section to check completion status
         student_profile = get_student_profile(st.session_state.current_user_id)
 
         profile_incomplete = True
@@ -767,15 +780,22 @@ else: # User is logged in
             if student_profile.get('full_name') and student_profile.get('department'):
                 profile_incomplete = False
 
+        # --- Enforce Profile Completion First if the user is not already in profile view ---
+        # If profile is incomplete AND the current view is NOT the profile view, force it to profile view.
+        # This handles initial login to incomplete profile, or navigating away and coming back.
+        if profile_incomplete and st.session_state.view != 'student_profile':
+             st.session_state.view = 'student_profile'
+             st.warning("Please complete your profile to proceed.") # Show this warning only when redirecting
+             st.rerun() # Rerun to show the profile page
+
         # --- Display the correct view based on st.session_state.view ---
         if st.session_state.view == 'student_profile':
              # --- Student Profile Completion Form ---
              st.header(f"📝 Student Profile - {st.session_state.current_college_name}")
-             if profile_incomplete: # Still show warning if profile is truly incomplete
-                 st.warning("Please complete your profile to proceed.")
-             # Profile form logic is here...
+             # No need for a warning here if the redirection logic above handles it, but can keep if desired.
+
              with st.container(border=True):
-                 st.subheader("👤 Complete Your Profile")
+                 st.subheader("👤 Complete/Edit Your Profile") # Update title to reflect editing capability
                  st.info("Fields marked with * are required.")
                  with st.form("profile_form_student"):
                     # Populate defaults if profile exists
@@ -803,7 +823,7 @@ else: # User is logged in
                                 st.success("Profile saved successfully!")
                                 # View is set here on successful save
                                 st.session_state.view = 'student_essay'
-                                # Reset essay state for the new start
+                                # Reset essay state for a potential new start
                                 st.session_state.essay_started = False
                                 st.session_state.timer_start_time = None
                                 st.session_state.essay_title_input = ""
@@ -815,7 +835,7 @@ else: # User is logged in
         elif st.session_state.view == 'student_essay':
              # --- Student Essay Writing Section ---
              st.header(f"✍️ New Essay Test - {st.session_state.current_college_name}")
-             # Added an extra check here just in case, though login/profile save should prevent it
+             # Added an extra check here just in case, though login/profile save/redirection should prevent it
              if profile_incomplete:
                   st.warning("Please complete your profile before starting an essay.")
                   if st.button("Go to Profile"):
@@ -840,6 +860,7 @@ else: # User is logged in
              elif st.session_state.essay_started:
                  # Essay writing in progress section
                  st.subheader(f"⏳ Writing: {st.session_state.essay_title_input}")
+                 # ... (Timer, Word Count, Quill Editor, Submit Button logic remains the same) ...
                  time_elapsed = time.time() - st.session_state.timer_start_time
                  time_remaining = st.session_state.submission_time_limit_seconds - time_elapsed
 
@@ -867,7 +888,7 @@ else: # User is logged in
                          st.error("Time's Up!")
 
                  with col_wc:
-                     temp_markdown_for_wc = md(essay_html_content) if essay_html_content and essay_html_content != "<p><br></p>" and essay_html_content.strip() != "<p></p>" else ""
+                     temp_markdown_for_wc = md(essay_html_content) if essay_html_content and essay_html_content != "<p><br></p>" and essay_content_html.strip() != "<p></p>" else ""
                      word_count = calculate_word_count(temp_markdown_for_wc)
                      st.info(f"Words: **{word_count}**")
 
@@ -898,7 +919,8 @@ else: # User is logged in
                  st.info("ℹ️ You haven't submitted any essays yet.")
                  if st.button("Start your first essay!"):
                      st.session_state.view = 'student_essay'
-                     st.session_state.essay_started = False # Ensure essay start state is reset
+                     # Reset essay state when navigating to start a new one
+                     st.session_state.essay_started = False
                      st.session_state.timer_start_time = None
                      st.session_state.essay_title_input = ""
                      st.session_state.essay_content_html = ""
