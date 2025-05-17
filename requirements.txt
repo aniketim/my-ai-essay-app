@@ -1,0 +1,8 @@
+streamlit
+google-generativeai
+werkzeug
+pandas
+openpyxl
+streamlit-quill
+markdownify
+psycopg2-binary
