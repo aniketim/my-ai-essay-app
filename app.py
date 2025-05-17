@@ -1,3 +1,4 @@
+--- START OF REWRITTEN app.py ---
 import streamlit as st
 import google.generativeai as genai
 import time
@@ -142,46 +143,82 @@ def create_user(username, password, user_type, college_name=None):
 def authenticate_user(username, password):
     conn = None
     cursor = None
+    print(f"[{datetime.now()}] Attempting authentication for user: {username}") # Added debug print
     try:
         conn = get_db_connection();
         if conn is None:
+            print(f"[{datetime.now()}] Auth failed: get_db_connection returned None.") # Added debug print
             # get_db_connection already shows error, no need to repeat
             return
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cursor.execute("SELECT id, password_hash, user_type, college_name FROM users WHERE username = %s", (username,))
-        user_record = cursor.fetchone()
+        print(f"[{datetime.now()}] Auth: Database connection successful.") # Added debug print
 
-        if user_record and check_password_hash(user_record['password_hash'], password):
-            st.session_state.logged_in = True
-            st.session_state.user_type = user_record['user_type']
-            st.session_state.current_username = user_record['username']
-            st.session_state.current_user_id = user_record['id']
-            st.session_state.current_college_name = user_record.get('college_name')
-            # After successful login, determine the next view based on user type
-            if st.session_state.user_type == 'student':
-                 # Check if profile is complete for students immediately after login
-                 student_profile = get_student_profile(st.session_state.current_user_id)
-                 if student_profile and student_profile.get('full_name') and student_profile.get('department'):
-                     st.session_state.view = 'student_essay' # Go directly to essay if profile complete
-                 else:
-                     st.session_state.view = 'student_profile' # Go to profile completion if incomplete
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        print(f"[{datetime.now()}] Auth: Cursor created. Executing query for user {username}...") # Added debug print
+        # *** FIX APPLIED HERE: Added 'username' to the SELECT list ***
+        cursor.execute("SELECT id, username, password_hash, user_type, college_name FROM users WHERE username = %s", (username,))
+        user_record = cursor.fetchone() # Returns a DictRow or None
+        print(f"[{datetime.now()}] Auth: Query executed. user_record: {user_record}") # Added debug print
+
+        if user_record:
+            print(f"[{datetime.now()}] Auth: User record found. Checking password hash...") # Added debug print
+            if check_password_hash(user_record['password_hash'], password):
+                print(f"[{datetime.now()}] Auth: Password hash matched! Setting session state...") # Added debug print
+                st.session_state.logged_in = True
+                st.session_state.user_type = user_record['user_type']
+                # Access username from the fetched record using the column name
+                st.session_state.current_username = user_record.get('username')
+                st.session_state.current_user_id = user_record['id']
+                st.session_state.current_college_name = user_record.get('college_name')
+
+                # After successful login, determine the next view based on user type
+                print(f"[{datetime.now()}] Auth: User type is {st.session_state.user_type}. Determining next view...") # Added debug print
+                if st.session_state.user_type == 'student':
+                     # Check if profile is complete for students immediately after login
+                     student_profile = get_student_profile(st.session_state.current_user_id)
+                     profile_incomplete = True
+                     # Added checks for potential None return from get_student_profile
+                     if student_profile and isinstance(student_profile, dict) and student_profile.get('full_name') and student_profile.get('department'):
+                        profile_incomplete = False
+                     print(f"[{datetime.now()}] Auth: Student profile check complete. Incomplete: {profile_incomplete}") # Added debug print
+
+                     if profile_incomplete:
+                         st.session_state.view = 'student_profile'
+                         print(f"[{datetime.now()}] Auth: Redirecting student to profile view.") # Added debug print
+                     else:
+                         st.session_state.view = 'student_essay'
+                         st.session_state.essay_started = False # Reset essay state on successful login & redirect
+                         st.session_state.timer_start_time = None
+                         st.session_state.essay_title_input = ""
+                         st.session_state.essay_content_html = ""
+                         print(f"[{datetime.now()}] Auth: Redirecting student to essay view.") # Added debug print
+                else:
+                    st.session_state.view = 'dashboard' # Admins go to general dashboard view
+                    print(f"[{datetime.now()}] Auth: Redirecting admin to dashboard view.") # Added debug print
+
+                st.success(f"Logged in successfully!") # Simplified success message
+                # The actual welcome message with username is in the sidebar UI logic
+                print(f"[{datetime.now()}] User {username} logged in successfully. Session User ID: {st.session_state.current_user_id}") # Added debug print
+                st.rerun() # This triggers a script rerun
+
             else:
-                st.session_state.view = 'dashboard' # Admins go to general dashboard view
-            st.success(f"Logged in as {username} ({st.session_state.user_type.replace('_', ' ').title()})")
-            print(f"[{datetime.now()}] User {username} logged in. Session User ID: {st.session_state.current_user_id}")
-            st.rerun()
+                print(f"[{datetime.now()}] Auth failed: Password hash did NOT match for user {username}.") # Added debug print
+                st.error("Invalid username or password") # Keep this user feedback
         else:
-            st.error("Invalid username or password") # Keep this error for user feedback
+             print(f"[{datetime.now()}] Auth failed: User record NOT found for username {username}.") # Added debug print
+             st.error("Invalid username or password") # Keep this user feedback
+
     except (Exception, psycopg2.Error) as error:
-        print(f"Auth Error for user {username}: {error}") # Log detailed error
+        print(f"[{datetime.now()}] Auth Error for user {username}: {error}") # Log detailed error
         st.error(f"An authentication error occurred. Please try again.") # Simplified user error
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+        print(f"[{datetime.now()}] Authentication routine finished for user {username}.") # Added debug print
+
 
 def get_student_profile(user_id):
     if user_id is None:
-        print(f"[{datetime.now()}] get_student_profile called with user_id = None. This should ideally not happen after login.")
+        print(f"[{datetime.now()}] get_student_profile called with user_id = None. This should ideally not happen after login.") # Added debug print
         return None # Return None if user_id is unexpectedly missing
     conn = None
     cursor = None
@@ -190,7 +227,8 @@ def get_student_profile(user_id):
         if conn is None: return None
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cursor.execute("SELECT full_name, department, branch, roll_number, email FROM student_profiles WHERE user_id = %s", (user_id,))
-        profile = cursor.fetchone()
+        profile = cursor.fetchone() # Returns a DictRow or None
+        print(f"[{datetime.now()}] Fetched student profile for user {user_id}: {profile}") # Added debug print
         return profile
     except (Exception, psycopg2.Error) as error:
         print(f"Error getting student profile for user {user_id}: {error}") # Log detailed error
@@ -202,7 +240,7 @@ def get_student_profile(user_id):
 
 def save_student_profile(user_id, full_name, department, branch, roll_number, email):
     if user_id is None:
-        print(f"[{datetime.now()}] save_student_profile called with user_id = None. This is unexpected.")
+        print(f"[{datetime.now()}] save_student_profile called with user_id = None. This is unexpected.") # Added debug print
         st.error("Could not save profile: User session issue. Please try logging out and in again.") # Simplified user error
         return False
     sql = """
@@ -225,7 +263,7 @@ def save_student_profile(user_id, full_name, department, branch, roll_number, em
         cursor = conn.cursor()
         cursor.execute(sql, (user_id, full_name, department, branch, roll_number, email))
         conn.commit()
-        print(f"[{datetime.now()}] Student profile saved/updated for user_id: {user_id}")
+        print(f"[{datetime.now()}] Student profile saved/updated for user_id: {user_id}") # Added debug print
         return True
     except (Exception, psycopg2.Error) as error:
         print(f"[{datetime.now()}] Error saving student profile for user_id {user_id}: {error}") # Log detailed error
@@ -237,31 +275,53 @@ def save_student_profile(user_id, full_name, department, branch, roll_number, em
 
 def save_essay_submission(student_user_id, title, content_markdown, ai_feedback_json_str, overall_rating):
     if student_user_id is None:
-         print(f"[{datetime.now()}] save_essay_submission called with student_user_id = None. This is unexpected.")
+         print(f"[{datetime.now()}] save_essay_submission called with student_user_id = None. This is unexpected.") # Added debug print
          st.error("Could not save essay: User session issue. Please try logging out and in again.") # Simplified user error
          return
-    sql = """
-        INSERT INTO essays (student_user_id, title, content_markdown, submission_time, ai_feedback_json, overall_rating)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """
-    conn = None
-    cursor = None
-    submission_time_val = datetime.now()
-    try:
-        conn = get_db_connection();
-        if conn is None:
-            st.error("Failed to save essay: Database connection error.") # Keep this for user feedback
-            return
-        cursor = conn.cursor()
-        db_overall_rating = overall_rating if isinstance(overall_rating, (int, float)) else None
-        cursor.execute(sql, (student_user_id, title, content_markdown, submission_time_val, ai_feedback_json_str, db_overall_rating))
-        conn.commit()
-    except (Exception, psycopg2.Error) as error:
-        print(f"Error saving essay for user {student_user_id}: {error}") # Log detailed error
-        st.error("Failed to save essay submission.") # Simplified user error
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+    if not title.strip():
+        st.warning("Please add a title before submitting your essay.") # Keep this user feedback
+        return
+
+    essay_markdown = ""
+    # Ensure content is not just empty HTML tags
+    if essay_content_html and essay_content_html != "<p><br></p>" and essay_content_html.strip() != "<p></p>":
+        try:
+            essay_markdown = md(essay_content_html)
+        except Exception as e_md:
+            print(f"Error converting essay content to Markdown: {e_md}") # Log error
+            essay_markdown = "<i>Error converting content.</i>" # Basic fallback
+            st.warning("Could not process essay formatting, submitting as plain text.") # User feedback
+    else:
+        st.warning("Essay content cannot be empty for submission.") # Keep this user feedback
+        return
+
+    with st.spinner("⏳ Evaluating and submitting your essay..."):
+        ai_feedback_data = get_gemini_assessment(title, essay_markdown)
+
+    ai_feedback_json_str = json.dumps(ai_feedback_data)
+    overall_rating = None
+    if isinstance(ai_feedback_data, dict) and "error" not in ai_feedback_data:
+        overall_rating = ai_feedback_data.get("overall_rating")
+        st.success("🎉 Essay submitted and assessed successfully!")
+        st.balloons()
+    else:
+        st.error("⚠️ There was an issue processing the AI feedback. Your essay was saved, but feedback may be missing.") # Simplified feedback error
+        # The specific AI error is logged within get_gemini_assessment
+        # If feedback data is not valid JSON or has an error, store the raw or error state
+        if isinstance(ai_feedback_data, dict):
+             ai_feedback_json_str = json.dumps(ai_feedback_data) # Save the error/raw response if it's a dict
+
+    # Save the essay regardless of AI feedback success, if content and title are valid
+    save_essay_submission(student_user_id, title, essay_markdown, ai_feedback_json_str, overall_rating)
+
+    # Reset state for next essay
+    st.session_state.essay_started = False
+    st.session_state.timer_start_time = None
+    st.session_state.essay_title_input = ""
+    st.session_state.essay_content_html = ""
+    # Redirect to student dashboard to see past submissions
+    st.session_state.view = 'student_dashboard'
+    st.rerun() # Rerun to update the view
 
 def get_student_essays(student_user_id):
     if student_user_id is None: return [] # Return empty list if user_id is missing
@@ -278,6 +338,7 @@ def get_student_essays(student_user_id):
             ORDER BY submission_time DESC
         ''', (student_user_id,))
         essays = [dict(row) for row in cursor.fetchall()]
+        print(f"[{datetime.now()}] Fetched {len(essays)} essays for user {student_user_id}.") # Added debug print
         return essays
     except (Exception, psycopg2.Error) as error:
         print(f"Error getting student essays for user {student_user_id}: {error}") # Log detailed error
@@ -311,6 +372,7 @@ def get_college_reports(college_name):
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cursor.execute(sql_query, (college_name,))
         reports_list = [dict(row) for row in cursor.fetchall()]
+        print(f"[{datetime.now()}] Fetched {len(reports_list)} college reports for {college_name}.") # Added debug print
         return reports_list
     except (Exception, psycopg2.Error) as error:
         print(f"SQL Error in get_college_reports for {college_name}: {error}") # Log detailed error
@@ -407,52 +469,6 @@ def get_gemini_assessment(title, essay_markdown):
             return {"error": f"AI API error: {e.response.prompt_feedback}", "raw_response": str(e)} # Include prompt feedback in error
         return {"error": f"AI API connection error: {str(e)}"} # Simplified error
 
-def process_and_submit_essay(student_user_id, title, essay_content_html):
-    if student_user_id is None:
-         print(f"[{datetime.now()}] process_and_submit_essay called with student_user_id = None. Unexpected state.")
-         st.error("Cannot submit essay: Session issue. Please try logging out and in again.") # Simplified user error
-         return
-    if not title.strip():
-        st.warning("Please add a title before submitting your essay.") # Keep this user feedback
-        return
-
-    essay_markdown = ""
-    # Ensure content is not just empty HTML tags
-    if essay_content_html and essay_content_html != "<p><br></p>" and essay_content_html.strip() != "<p></p>":
-        try:
-            essay_markdown = md(essay_content_html)
-        except Exception as e_md:
-            print(f"Error converting essay content to Markdown: {e_md}") # Log error
-            essay_markdown = "<i>Error converting content.</i>" # Basic fallback
-            st.warning("Could not process essay formatting, submitting as plain text.") # User feedback
-    else:
-        st.warning("Essay content cannot be empty for submission.") # Keep this user feedback
-        return
-
-    with st.spinner("⏳ Evaluating and submitting your essay..."):
-        ai_feedback_data = get_gemini_assessment(title, essay_markdown)
-
-    ai_feedback_json_str = json.dumps(ai_feedback_data)
-    overall_rating = None
-    if isinstance(ai_feedback_data, dict) and "error" not in ai_feedback_data:
-        overall_rating = ai_feedback_data.get("overall_rating")
-        st.success("🎉 Essay submitted and assessed successfully!")
-        st.balloons()
-    else:
-        st.error("⚠️ There was an issue processing the AI feedback. Your essay was saved, but feedback may be missing.") # Simplified feedback error
-        # The specific AI error is logged within get_gemini_assessment
-
-    # Save the essay regardless of AI feedback success, if content and title are valid
-    save_essay_submission(student_user_id, title, essay_markdown, ai_feedback_json_str, overall_rating)
-
-    # Reset state for next essay
-    st.session_state.essay_started = False
-    st.session_state.timer_start_time = None
-    st.session_state.essay_title_input = ""
-    st.session_state.essay_content_html = ""
-    # Redirect to student dashboard to see past submissions
-    st.session_state.view = 'student_dashboard'
-    st.rerun() # Rerun to update the view
 
 # --- Session State Initialization (for UI state variables) ---
 # Added new views for clearer flow: 'student_profile', 'student_essay', 'student_dashboard'
@@ -468,13 +484,15 @@ if 'essay_started' not in st.session_state: st.session_state.essay_started = Fal
 if 'timer_start_time' not in st.session_state: st.session_state.timer_start_time = None
 if 'submission_time_limit_seconds' not in st.session_state: st.session_state.submission_time_limit_seconds = 15 * 60
 
+
 # --- UI Sections ---
 with st.sidebar:
     st.image(APP_LOGO_URL, width=180)
     st.title("AI Essay Grader")
     st.markdown("---")
     if st.session_state.logged_in:
-        st.success(f"Welcome, **{st.session_state.current_username}**!")
+        # Welcome message now uses the session state variable
+        st.success(f"Welcome, **{st.session_state.get('current_username', 'User')}**!") # Use .get for safety just in case
         st.info(f"**Role:** {st.session_state.user_type.replace('_', ' ').title()}")
         if st.session_state.current_college_name:
             st.write(f"**College:** {st.session_state.current_college_name}")
@@ -485,6 +503,9 @@ with st.sidebar:
              if st.button("✍️ Start New Essay", use_container_width=True, key="nav_new_essay"):
                   st.session_state.view = 'student_essay'
                   st.session_state.essay_started = False # Ensure state resets when clicking nav
+                  st.session_state.timer_start_time = None
+                  st.session_state.essay_title_input = ""
+                  st.session_state.essay_content_html = ""
                   st.rerun()
              if st.button("📚 View Past Submissions", use_container_width=True, key="nav_past_submissions"):
                   st.session_state.view = 'student_dashboard'
@@ -547,7 +568,7 @@ if not st.session_state.logged_in:
                     if signup_submitted:
                         if signup_username and signup_password and signup_college_name:
                             if len(signup_password) < 6:
-                                st.warning("Password should be at least 6 characters long.")
+                                 st.warning("Password should be at least 6 characters long.")
                             else:
                                 success, message = create_user(signup_username, signup_password, 'student', signup_college_name)
                                 if success:
@@ -737,7 +758,8 @@ else: # User is logged in
         student_profile = get_student_profile(st.session_state.current_user_id)
 
         profile_incomplete = True
-        if student_profile:
+        # Ensure student_profile is a dictionary before checking keys
+        if student_profile and isinstance(student_profile, dict):
             if student_profile.get('full_name') and student_profile.get('department'):
                 profile_incomplete = False
 
@@ -752,11 +774,12 @@ else: # User is logged in
                  st.info("Fields marked with * are required.")
                  with st.form("profile_form_student"):
                     # Populate defaults if profile exists
-                    s_full_name_default = student_profile.get('full_name', '') if student_profile else ""
-                    s_department_default = student_profile.get('department', '') if student_profile else ""
-                    s_branch_default = student_profile.get('branch', '') if student_profile else ""
-                    s_roll_number_default = student_profile.get('roll_number', '') if student_profile else ""
-                    s_email_default = student_profile.get('email', '') if student_profile else ""
+                    s_full_name_default = student_profile.get('full_name', '') if student_profile and isinstance(student_profile, dict) else ""
+                    s_department_default = student_profile.get('department', '') if student_profile and isinstance(student_profile, dict) else ""
+                    s_branch_default = student_profile.get('branch', '') if student_profile and isinstance(student_profile, dict) else ""
+                    s_roll_number_default = student_profile.get('roll_number', '') if student_profile and isinstance(student_profile, dict) else ""
+                    s_email_default = student_profile.get('email', '') if student_profile and isinstance(student_profile, dict) else ""
+
 
                     s_full_name = st.text_input("Full Name*", value=s_full_name_default, placeholder="Your full name")
                     s_department = st.text_input("Department*", value=s_department_default, placeholder="e.g., Computer Science")
@@ -775,6 +798,9 @@ else: # User is logged in
                                 st.success("Profile saved successfully!")
                                 st.session_state.view = 'student_essay' # Redirect to essay after profile complete
                                 st.session_state.essay_started = False # Ensure essay start state is reset
+                                st.session_state.timer_start_time = None
+                                st.session_state.essay_title_input = ""
+                                st.session_state.essay_content_html = ""
                                 st.rerun()
                         else:
                             st.warning("Please fill all required fields (Full Name, Department).")
@@ -782,7 +808,7 @@ else: # User is logged in
         elif st.session_state.view == 'student_essay':
              # Essay writing view
              st.header(f"✍️ New Essay Test - {st.session_state.current_college_name}")
-             # Ensure profile is complete before allowing essay start (redundant check after login redirect, but safe)
+             # Ensure profile is complete before allowing essay start (redundant check after login redirection, but safe)
              if profile_incomplete:
                   st.warning("Please complete your profile before starting an essay.")
                   # Option to add a button to go back to profile if they got here incorrectly
@@ -845,7 +871,7 @@ else: # User is logged in
                      if submit_button_placeholder.button("✅ Submit Essay", key="manual_submit_student_main", type="primary", use_container_width=True):
                          process_and_submit_essay(st.session_state.current_user_id, st.session_state.essay_title_input, essay_html_content)
                          # process_and_submit_essay handles rerunning and setting view to 'student_dashboard'
-                     # Timer update logic
+                     # Timer update logic - rerun every second only when writing
                      time.sleep(1)
                      st.rerun()
                  else:
@@ -866,15 +892,27 @@ else: # User is logged in
                  if st.button("Start your first essay!"):
                      st.session_state.view = 'student_essay'
                      st.session_state.essay_started = False # Ensure essay start state is reset
+                     st.session_state.timer_start_time = None
+                     st.session_state.essay_title_input = ""
+                     st.session_state.essay_content_html = ""
                      st.rerun()
              else:
                  st.markdown("---")
                  for essay_record in student_essays:
                      feedback_data = {}
                      ai_feedback_json = essay_record.get('ai_feedback_json')
-                     if ai_feedback_json:
-                         try: feedback_data = json.loads(ai_feedback_json)
+                     if ai_feedback_json and isinstance(ai_feedback_json, (str, dict)): # Handle potential non-string JSON data
+                         try:
+                             # If it's already a dict (possible from JSONB fetch), use it directly
+                             if isinstance(ai_feedback_json, dict):
+                                 feedback_data = ai_feedback_json
+                             else: # Otherwise, assume it's a JSON string
+                                feedback_data = json.loads(ai_feedback_json)
                          except json.JSONDecodeError: feedback_data = {"error": "Could not parse feedback."}
+                     else: # Handle case where ai_feedback_json is None or other unexpected type
+                         feedback_data = {"error": "Feedback data not available."}
+
+
                      rating = essay_record.get('overall_rating') if essay_record.get('overall_rating') is not None else "N/A"
                      if isinstance(feedback_data, dict) and 'overall_rating' in feedback_data:
                          rating_from_fb = feedback_data.get('overall_rating')
