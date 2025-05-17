@@ -172,27 +172,14 @@ def authenticate_user(username, password):
                 # After successful login, determine the next view based on user type
                 # print(f"[{datetime.now()}] Auth: User type is {st.session_state.user_type}. Determining next view...") # Debug print
                 if st.session_state.user_type == 'student':
-                     # Check if profile is complete for students immediately after login
-                     student_profile = get_student_profile(st.session_state.current_user_id)
-                     profile_incomplete = True
-                     # Added checks for potential None return from get_student_profile
-                     if student_profile and isinstance(student_profile, dict) and student_profile.get('full_name') and student_profile.get('department'):
-                        profile_incomplete = False
-                     # print(f"[{datetime.now()}] Auth: Student profile check complete. Incomplete: {profile_incomplete}") # Debug print
-
-                     if profile_incomplete:
-                         # Set view to profile completion
-                         st.session_state.view = 'student_profile'
-                         # print(f"[{datetime.now()}] Auth: Redirecting student to profile view.") # Debug print
-                     else:
-                         # Set view to essay writing
-                         st.session_state.view = 'student_essay'
-                         # Reset essay state on successful login & redirect to essay
-                         st.session_state.essay_started = False
-                         st.session_state.timer_start_time = None
-                         st.session_state.essay_title_input = ""
-                         st.session_state.essay_content_html = ""
-                         # print(f"[{datetime.now()}] Auth: Redirecting student to essay view.") # Debug print
+                     # Students go directly to the essay writing page after login
+                     st.session_state.view = 'student_essay'
+                     # Reset essay state on successful login & redirect to essay
+                     st.session_state.essay_started = False
+                     st.session_state.timer_start_time = None
+                     st.session_state.essay_title_input = ""
+                     st.session_state.essay_content_html = ""
+                     # print(f"[{datetime.now()}] Auth: Redirecting student to essay view.") # Debug print
                 else:
                     st.session_state.view = 'dashboard' # Admins go to general dashboard view
                     # print(f"[{datetime.now()}] Auth: Redirecting admin to dashboard view.") # Debug print
@@ -588,12 +575,15 @@ else: # User is logged in
     # Fetch profile info *at the start* of the logged-in section for potential use across student views
     # Admin views don't need profile info, but fetching here is safe
     student_profile = None
-    profile_incomplete = False
+    # profile_incomplete is no longer used to gate the essay writing page
+
     if st.session_state.user_type == 'student' and st.session_state.current_user_id is not None:
          student_profile = get_student_profile(st.session_state.current_user_id)
-         # Check for None or empty/whitespace strings for required fields
-         if student_profile is None or not (student_profile.get('full_name', '').strip() and student_profile.get('department', '').strip()):
-             profile_incomplete = True
+         # We still calculate profile_incomplete for displaying warnings/info in the profile view
+         profile_incomplete_for_display = True
+         if student_profile is not None and isinstance(student_profile, dict):
+             if student_profile.get('full_name', '').strip() and student_profile.get('department', '').strip():
+                 profile_incomplete_for_display = False
 
 
     # Simplified Admin Views
@@ -766,4 +756,230 @@ else: # User is logged in
                                     if criteria_scores_data:
                                         st.markdown("##### Detailed Scores:")
                                         for criterion, details in criteria_scores_data.items():
-                                            st.markdown(f"- **{criterion.replace('_', ' ').title()}:** {details.get('score', 'N/A')}/10 - *{details.get('justification', 'No justification.')}*
+                                            st.markdown(f"- **{criterion.replace('_', ' ').title()}:** {details.get('score', 'N/A')}/10 - *{details.get('justification', 'No justification.')}*")
+                                else: st.warning("Feedback not available for this essay.")
+
+
+    elif st.session_state.user_type == 'student':
+        # Student flow: Login -> Essay -> Dashboard (Past Submissions) -> Profile (Optional Edit)
+        # Fetch profile info *at the start* of the student section for the profile view and sidebar link
+        student_profile = get_student_profile(st.session_state.current_user_id)
+
+        # profile_incomplete is no longer used to block the essay page.
+        # We only need it for the warning message in the profile edit view.
+        profile_incomplete_for_display = True
+        if student_profile is not None and isinstance(student_profile, dict):
+            if student_profile.get('full_name', '').strip() and student_profile.get('department', '').strip():
+                profile_incomplete_for_display = False
+
+
+        # --- Display the correct view based on st.session_state.view ---
+        if st.session_state.view == 'student_profile':
+             # --- Student Profile Completion/Edit Form ---
+             st.header(f"📝 Student Profile - {st.session_state.current_college_name}")
+             # Show warning if profile is incomplete (only in this view)
+             if profile_incomplete_for_display:
+                 st.warning("Please complete your profile details.")
+
+             with st.container(border=True):
+                 st.subheader("👤 Complete/Edit Your Profile") # Update title to reflect editing capability
+                 st.info("Fields marked with * are required.")
+                 with st.form("profile_form_student"):
+                    # Populate defaults if profile exists
+                    s_full_name_default = student_profile.get('full_name', '') if student_profile and isinstance(student_profile, dict) else ""
+                    s_department_default = student_profile.get('department', '') if student_profile and isinstance(student_profile, dict) else ""
+                    s_branch_default = student_profile.get('branch', '') if student_profile and isinstance(student_profile, dict) else ""
+                    s_roll_number_default = student_profile.get('roll_number', '') if student_profile and isinstance(student_profile, dict) else ""
+                    s_email_default = student_profile.get('email', '') if student_profile and isinstance(student_profile, dict) else ""
+
+
+                    s_full_name = st.text_input("Full Name*", value=s_full_name_default, placeholder="Your full name")
+                    s_department = st.text_input("Department*", value=s_department_default, placeholder="e.g., Computer Science")
+                    col1, col2 = st.columns([1,1])
+                    with col1:
+                        s_branch = st.text_input("Branch (Optional)", value=s_branch_default, placeholder="-")
+                    with col2:
+                        s_roll_number = st.text_input("Roll Number (Optional)", value=s_roll_number_default, placeholder="Your roll number")
+                    s_email = st.text_input("Email (Optional)", value=s_email_default, placeholder="your.email@example.com")
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    submit_profile = st.form_submit_button("💾 Save Profile", use_container_width=True, type="primary")
+
+                    if submit_profile:
+                        if s_full_name and s_department:
+                            if save_student_profile(st.session_state.current_user_id, s_full_name, s_department, s_branch, s_roll_number,s_email):
+                                st.success("Profile saved successfully!")
+                                # Stay on profile page after saving if navigated here via 'Edit Profile'
+                                # If they were redirected here after login because profile was incomplete,
+                                # you might want to redirect them to essay page here.
+                                # For this version, let's keep them on the profile page after save,
+                                # and they can navigate to essay/dashboard from the sidebar.
+                                # If you want to auto-redirect to essay *only* after the *first* save,
+                                # you'd need more complex logic (e.g., check if profile existed before save).
+                                # Simple approach: save successful -> user stays on profile page.
+                                pass # No view change here
+
+                        else:
+                            st.warning("Please fill all required fields (Full Name, Department).")
+
+        elif st.session_state.view == 'student_essay':
+             # --- Student Essay Writing Section ---
+             st.header(f"✍️ New Essay Test - {st.session_state.current_college_name}")
+
+             # No longer block the essay page if profile is incomplete.
+             # The warning will only be shown in the profile view.
+
+             if not st.session_state.essay_started:
+                 # Start New Essay section
+                 with st.container(border=True):
+                     st.subheader("Start Your Essay")
+                     st.session_state.essay_title_input = st.text_input("Enter the title of your essay:", value=st.session_state.essay_title_input, key="essay_title_widget_main", placeholder="e.g., The Impact of Renewable Energy")
+                     st.markdown("<br>", unsafe_allow_html=True)
+                     if st.button("🚀 Start Writing My Essay!", disabled=(not st.session_state.essay_title_input.strip()), type="primary", use_container_width=True, key="start_essay_btn"):
+                         if st.session_state.essay_title_input.strip():
+                             st.session_state.essay_started = True
+                             st.session_state.timer_start_time = time.time()
+                             st.session_state.essay_content_html = "" # Clear content on start
+                             st.rerun()
+                         else: st.warning("Please enter an essay title.")
+
+             elif st.session_state.essay_started:
+                 # Essay writing in progress section
+                 st.subheader(f"⏳ Writing: {st.session_state.essay_title_input}")
+                 # ... (Timer, Word Count, Quill Editor, Submit Button logic remains the same) ...
+                 time_elapsed = time.time() - st.session_state.timer_start_time
+                 time_remaining = st.session_state.submission_time_limit_seconds - time_elapsed
+
+                 toolbar_config_essential = [['bold', 'italic', 'underline'], [{'header': 1}, {'header': 2}, {'header': 3}], [{'list': 'ordered'}, {'list': 'bullet'}], ['blockquote'], ['clean']]
+                 st.caption("Use the toolbar below to format your essay.")
+                 essay_html_content = st_quill(
+                     value=st.session_state.get("essay_content_html", ""),
+                     placeholder="Compose your brilliant essay here...",
+                     html=True,
+                     toolbar=toolbar_config_essential,
+                     key="quill_editor_main",
+                 )
+                 st.session_state.essay_content_html = essay_html_content # Update session state
+
+                 col_timer, col_wc, col_submit = st.columns([2,1,1])
+                 with col_timer:
+                     if time_remaining > 0:
+                         minutes = int(time_remaining // 60)
+                         seconds = int(time_remaining % 60)
+                         progress_value = time_elapsed / st.session_state.submission_time_limit_seconds
+                         st.progress(progress_value, text=f"Time Left: {minutes:02d}:{seconds:02d}")
+                         # Add visual cue for low time
+                         if time_remaining < 60: st.warning("Less than a minute remaining!")
+                     else:
+                         st.error("Time's Up!")
+
+                 with col_wc:
+                     temp_markdown_for_wc = md(essay_html_content) if essay_html_content and essay_html_content != "<p><br></p>" and essay_content_html.strip() != "<p></p>" else ""
+                     word_count = calculate_word_count(temp_markdown_for_wc)
+                     st.info(f"Words: **{word_count}**")
+
+                 submit_button_placeholder = col_submit.empty()
+
+                 if time_remaining > 0:
+                     if submit_button_placeholder.button("✅ Submit Essay", key="manual_submit_student_main", type="primary", use_container_width=True):
+                         process_and_submit_essay(st.session_state.current_user_id, st.session_state.essay_title_input, essay_html_content)
+                         # process_and_submit_essay handles rerunning and setting view to 'student_dashboard'
+                     # Timer update logic - rerun every second only when writing
+                     time.sleep(1)
+                     st.rerun()
+                 else:
+                     # Auto-submit when time is up
+                     submit_button_placeholder.empty()
+                     if st.session_state.essay_started:
+                         st.warning("Time's up! Submitting your essay automatically...")
+                         process_and_submit_essay(st.session_state.current_user_id, st.session_state.essay_title_input, essay_html_content)
+                         # process_and_submit_essay handles rerunning and setting view to 'student_dashboard'
+
+
+        elif st.session_state.view == 'student_dashboard':
+             # --- Student Past Submissions Dashboard ---
+             st.header("📚 Your Past Submissions")
+             # Display past essays...
+             student_essays = get_student_essays(st.session_state.current_user_id)
+             if not student_essays:
+                 st.info("ℹ️ You haven't submitted any essays yet.")
+                 # Optionally add a button to go to the essay writing page
+                 if st.button("Start your first essay!"):
+                     st.session_state.view = 'student_essay'
+                     st.session_state.essay_started = False # Ensure essay start state is reset
+                     st.session_state.timer_start_time = None
+                     st.session_state.essay_title_input = ""
+                     st.session_state.essay_content_html = ""
+                     st.rerun()
+             else:
+                 st.markdown("---")
+                 for essay_record in student_essays:
+                     feedback_data = {}
+                     ai_feedback_json = essay_record.get('ai_feedback_json')
+                     if ai_feedback_json and isinstance(ai_feedback_json, (str, dict)): # Handle potential non-string JSON data
+                         try:
+                             # If it's already a dict (possible from JSONB fetch), use it directly
+                             if isinstance(ai_feedback_json, dict):
+                                 feedback_data = ai_feedback_json
+                             else: # Otherwise, assume it's a JSON string
+                                feedback_data = json.loads(ai_feedback_json)
+                         except json.JSONDecodeError: feedback_data = {"error": "Could not parse feedback."}
+                     else: # Handle case where ai_feedback_json is None or other unexpected type
+                         feedback_data = {"error": "Feedback data not available."}
+
+
+                     rating = essay_record.get('overall_rating') if essay_record.get('overall_rating') is not None else "N/A"
+                     if isinstance(feedback_data, dict) and 'overall_rating' in feedback_data:
+                         rating_from_fb = feedback_data.get('overall_rating')
+                         if isinstance(rating_from_fb, (int, float)): rating = f"{rating_from_fb:.0f}"
+                         elif isinstance(rating, (int,float)): rating = f"{rating:.0f}"
+                     elif isinstance(rating, (int,float)): rating = f"{rating:.0f}"
+
+                     # Format submission time for display
+                     submission_time_display = essay_record.get('submission_time')
+                     if isinstance(submission_time_display, datetime):
+                         submission_time_display = submission_time_display.strftime('%Y-%m-%d %H:%M')
+                     else:
+                         submission_time_display = 'N/A'
+
+
+                     expander_title_past = f"📜 {essay_record.get('title','N/A')} (Submitted: {submission_time_display}) - Rating: {rating}"
+                     with st.expander(expander_title_past):
+                         st.markdown(f"**Title:** {essay_record.get('title','N/A')}")
+                         st.markdown(f"**Submitted Content (Markdown):**")
+                         st.code(essay_record.get('content_markdown',''), language="markdown")
+
+                         if feedback_data and not feedback_data.get("error"):
+                             st.markdown("**📝 AI Feedback:**")
+                             st.info(f"**Overall Rating:** {feedback_data.get('overall_rating', 'N/A')}/100 | **Word Count (AI):** {feedback_data.get('word_count', 'N/A')}")
+                             st.markdown(f"**Summary:** {feedback_data.get('overall_feedback', 'No summary provided.')}")
+
+                             criteria_scores_data = feedback_data.get('criteria_scores', {})
+                             if criteria_scores_data:
+                                 st.markdown("##### Detailed Scores (Text):")
+                                 for criterion, details in criteria_scores_data.items():
+                                      st.markdown(f"- **{criterion.replace('_', ' ').title()}:** {details.get('score', 'N/A')}/10 - *{details.get('justification', 'No justification.')}*")
+                                 st.markdown("##### Detailed Scores (Graphical):")
+                                 chart_data = {}
+                                 for criterion, details in criteria_scores_data.items():
+                                     criterion_name_formatted = criterion.replace('_', ' ').title()
+                                     score_val = details.get('score', 0)
+                                     if isinstance(score_val, (int, float)): chart_data[criterion_name_formatted] = score_val
+                                     else: chart_data[criterion_name_formatted] = 0
+                                 if chart_data:
+                                     df_chart = pd.DataFrame(list(chart_data.items()), columns=['Criterion', 'Score'])
+                                     df_chart = df_chart.set_index('Criterion')
+                                     st.bar_chart(df_chart, height=300, use_container_width=True)
+                                 else: st.caption("No numerical criteria scores available to plot.")
+                             else: st.caption("No detailed criteria scores provided in feedback.")
+                         else:
+                             st.error(f"AI Feedback Error: {feedback_data.get('error', 'Unknown error')}")
+                             if 'raw_response' in feedback_data:
+                                 with st.expander("Show Raw AI Response"):
+                                     st.text_area("Raw AI Response:", feedback_data['raw_response'], height=100, disabled=True)
+                             st.warning("Feedback processing pending or not available.")
+
+        else:
+             # Fallback for unexpected view state for student
+             st.error("An unexpected state occurred. Please try logging out and in again.")
+             if st.button("Logout"):
+                 logout()
