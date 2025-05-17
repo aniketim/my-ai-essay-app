@@ -765,12 +765,12 @@ else: # User is logged in
         # Fetch profile info *at the start* of the student section for the profile view and sidebar link
         student_profile = get_student_profile(st.session_state.current_user_id)
 
-        # profile_incomplete is no longer used to block the essay page.
+        # profile_incomplete is no longer used to gate the essay writing page.
         # We only need it for the warning message in the profile edit view.
         profile_incomplete_for_display = True
         if student_profile is not None and isinstance(student_profile, dict):
-            if student_profile.get('full_name', '').strip() and student_profile.get('department', '').strip():
-                profile_incomplete_for_display = False
+             if student_profile.get('full_name', '').strip() and student_profile.get('department', '').strip():
+                 profile_incomplete_for_display = False
 
 
         # --- Display the correct view based on st.session_state.view ---
@@ -845,12 +845,26 @@ else: # User is logged in
              elif st.session_state.essay_started:
                  # Essay writing in progress section
                  st.subheader(f"⏳ Writing: {st.session_state.essay_title_input}")
-                 # ... (Timer, Word Count, Quill Editor, Submit Button logic remains the same) ...
+                 # ... (Timer calculation and display) ...
                  time_elapsed = time.time() - st.session_state.timer_start_time
                  time_remaining = st.session_state.submission_time_limit_seconds - time_elapsed
 
+                 col_timer, col_wc, col_submit = st.columns([2,1,1]) # Define columns
+
+                 with col_timer:
+                     if time_remaining > 0:
+                         minutes = int(time_remaining // 60)
+                         seconds = int(time_remaining % 60)
+                         progress_value = time_elapsed / st.session_state.submission_time_limit_seconds
+                         st.progress(progress_value, text=f"Time Left: {minutes:02d}:{seconds:02d}")
+                         if time_remaining < 60: st.warning("Less than a minute remaining!")
+                     else:
+                         st.error("Time's Up!")
+
                  toolbar_config_essential = [['bold', 'italic', 'underline'], [{'header': 1}, {'header': 2}, {'header': 3}], [{'list': 'ordered'}, {'list': 'bullet'}], ['blockquote'], ['clean']]
                  st.caption("Use the toolbar below to format your essay.")
+
+                 # --- Quill Editor is here ---
                  essay_html_content = st_quill(
                      value=st.session_state.get("essay_content_html", ""),
                      placeholder="Compose your brilliant essay here...",
@@ -860,37 +874,34 @@ else: # User is logged in
                  )
                  st.session_state.essay_content_html = essay_html_content # Update session state
 
-                 col_timer, col_wc, col_submit = st.columns([2,1,1])
-                 with col_timer:
-                     if time_remaining > 0:
-                         minutes = int(time_remaining // 60)
-                         seconds = int(time_remaining % 60)
-                         progress_value = time_elapsed / st.session_state.submission_time_limit_seconds
-                         st.progress(progress_value, text=f"Time Left: {minutes:02d}:{seconds:02d}")
-                         # Add visual cue for low time
-                         if time_remaining < 60: st.warning("Less than a minute remaining!")
-                     else:
-                         st.error("Time's Up!")
-
-                 with col_wc:
-                     temp_markdown_for_wc = md(essay_html_content) if essay_html_content and essay_html_content != "<p><br></p>" and essay_content_html.strip() != "<p></p>" else ""
+                 # *** MOVE WORD COUNT CALCULATION HERE, AFTER essay_html_content IS DEFINED ***
+                 # The columns col_timer, col_wc, col_submit were defined above the timer display
+                 with col_wc: # Use the previously defined word count column
+                     temp_markdown_for_wc = md(essay_html_content) if essay_html_content and essay_html_content != "<p><br></p>" and essay_html_content.strip() != "<p></p>" else ""
                      word_count = calculate_word_count(temp_markdown_for_wc)
                      st.info(f"Words: **{word_count}**")
+                 # *** END WORD COUNT CALCULATION ***
 
-                 submit_button_placeholder = col_submit.empty()
+
+                 submit_button_placeholder = col_submit.empty() # Use the previously defined submit column
 
                  if time_remaining > 0:
                      if submit_button_placeholder.button("✅ Submit Essay", key="manual_submit_student_main", type="primary", use_container_width=True):
+                         # process_and_submit_essay takes essay_html_content, so pass it
                          process_and_submit_essay(st.session_state.current_user_id, st.session_state.essay_title_input, essay_html_content)
                          # process_and_submit_essay handles rerunning and setting view to 'student_dashboard'
+
                      # Timer update logic - rerun every second only when writing
-                     time.sleep(1)
-                     st.rerun()
+                     # Only rerun if time is still remaining and essay is started
+                     if time_remaining > 0 and st.session_state.essay_started:
+                          time.sleep(1)
+                          st.rerun()
                  else:
                      # Auto-submit when time is up
                      submit_button_placeholder.empty()
                      if st.session_state.essay_started:
                          st.warning("Time's up! Submitting your essay automatically...")
+                         # process_and_submit_essay takes essay_html_content, so pass it
                          process_and_submit_essay(st.session_state.current_user_id, st.session_state.essay_title_input, essay_html_content)
                          # process_and_submit_essay handles rerunning and setting view to 'student_dashboard'
 
@@ -905,7 +916,8 @@ else: # User is logged in
                  # Optionally add a button to go to the essay writing page
                  if st.button("Start your first essay!"):
                      st.session_state.view = 'student_essay'
-                     st.session_state.essay_started = False # Ensure essay start state is reset
+                     # Reset essay state when navigating to start a new one
+                     st.session_state.essay_started = False
                      st.session_state.timer_start_time = None
                      st.session_state.essay_title_input = ""
                      st.session_state.essay_content_html = ""
