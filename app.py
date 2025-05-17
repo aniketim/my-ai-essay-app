@@ -262,115 +262,6 @@ def save_student_profile(user_id, full_name, department, branch, roll_number, em
         if cursor: cursor.close()
         if conn: conn.close()
 
-def save_essay_submission(student_user_id, title, content_markdown, ai_feedback_json_str, overall_rating):
-    if student_user_id is None:
-         print(f"[{datetime.now()}] save_essay_submission called with student_user_id = None. This is unexpected.") # Debug print
-         st.error("Could not save essay: User session issue. Please try logging out and in again.") # Simplified user error
-         return
-    if not title.strip():
-        st.warning("Please add a title before submitting your essay.") # Keep this user feedback
-        return
-
-    essay_markdown = ""
-    # Ensure content is not just empty HTML tags
-    if essay_content_html and essay_content_html != "<p><br></p>" and essay_content_html.strip() != "<p></p>":
-        try:
-            essay_markdown = md(essay_content_html)
-        except Exception as e_md:
-            print(f"Error converting essay content to Markdown: {e_md}") # Log error
-            essay_markdown = "<i>Error converting content.</i>" # Basic fallback
-            st.warning("Could not process essay formatting, submitting as plain text.") # User feedback
-    else:
-        st.warning("Essay content cannot be empty for submission.") # Keep this user feedback
-        return
-
-    with st.spinner("⏳ Evaluating and submitting your essay..."):
-        ai_feedback_data = get_gemini_assessment(title, essay_markdown)
-
-    ai_feedback_json_str = json.dumps(ai_feedback_data)
-    overall_rating = None
-    if isinstance(ai_feedback_data, dict) and "error" not in ai_feedback_data:
-        overall_rating = ai_feedback_data.get("overall_rating")
-        st.success("🎉 Essay submitted and assessed successfully!")
-        st.balloons()
-    else:
-        st.error("⚠️ There was an issue processing the AI feedback. Your essay was saved, but feedback may be missing.") # Simplified feedback error
-        # The specific AI error is logged within get_gemini_assessment
-        # If feedback data is not valid JSON or has an error, store the raw or error state
-        if isinstance(ai_feedback_data, dict):
-             ai_feedback_json_str = json.dumps(ai_feedback_data) # Save the error/raw response if it's a dict
-
-    # Save the essay regardless of AI feedback success, if content and title are valid
-    save_essay_submission(student_user_id, title, essay_markdown, ai_feedback_json_str, overall_rating)
-
-    # Reset state for next essay
-    st.session_state.essay_started = False
-    st.session_state.timer_start_time = None
-    st.session_state.essay_title_input = ""
-    st.session_state.essay_content_html = ""
-    # Redirect to student dashboard to see past submissions
-    st.session_state.view = 'student_dashboard'
-    st.rerun() # Rerun to update the view
-
-def get_student_essays(student_user_id):
-    if student_user_id is None: return [] # Return empty list if user_id is missing
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection();
-        if conn is None: return []
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cursor.execute('''
-            SELECT id, title, content_markdown, submission_time, ai_feedback_json, overall_rating
-            FROM essays
-            WHERE student_user_id = %s
-            ORDER BY submission_time DESC
-        ''', (student_user_id,))
-        essays = [dict(row) for row in cursor.fetchall()]
-        # print(f"[{datetime.now()}] Fetched {len(essays)} essays for user {student_user_id}.") # Debug print
-        return essays
-    except (Exception, psycopg2.Error) as error:
-        print(f"Error getting student essays for user {student_user_id}: {error}") # Log detailed error
-        return [] # Return empty list on error
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
-def get_college_reports(college_name):
-    # This function is primarily for admin roles, less focus on simplifying user-facing messages here
-    conn = None
-    cursor = None
-    sql_query = '''
-        SELECT
-            e.id as essay_id, e.title as essay_title, e.submission_time, e.overall_rating, e.ai_feedback_json, e.content_markdown,
-            u.username as student_username, u.college_name,
-            sp.full_name as student_full_name,
-            sp.department as student_department,
-            sp.branch as student_branch,
-            sp.roll_number as student_roll_number
-        FROM essays e
-        JOIN users u ON e.student_user_id = u.id
-        LEFT JOIN student_profiles sp ON u.id = sp.user_id
-        WHERE u.college_name = %s AND u.user_type = 'student'
-    '''
-    try:
-        conn = get_db_connection();
-        if conn is None:
-             st.error("Failed to fetch college reports: Database error.") # Keep this for admin
-             return []
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cursor.execute(sql_query, (college_name,))
-        reports_list = [dict(row) for row in cursor.fetchall()]
-        # print(f"[{datetime.now()}] Fetched {len(reports_list)} college reports for {college_name}.") # Debug print
-        return reports_list
-    except (Exception, psycopg2.Error) as error:
-        print(f"SQL Error in get_college_reports for {college_name}: {error}") # Log detailed error
-        st.error("Failed to fetch college reports due to an internal error.") # Simplified admin error
-        return []
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
-
 # --- Helper Functions ---
 def logout():
     # Reset all relevant session state variables on logout
@@ -388,8 +279,7 @@ def logout():
 def calculate_word_count(text):
     return len(text.split()) if text else 0
 
-# --- AI Logic ---
-# Keep AI logic mostly the same, simplify user-facing error messages
+# --- AI Logic Functions (MOVED ABOVE UI SECTIONS) ---
 def get_gemini_assessment(title, essay_markdown):
     prompt = f"""
     You are an AI assistant specialized in evaluating student essays.
@@ -400,7 +290,7 @@ def get_gemini_assessment(title, essay_markdown):
     ---
     Please assess the essay based on the following criteria. For each criterion, provide a score from 0 to 10 (0 being very poor, 10 being excellent) and a brief justification.
     1.  Grammar and Mechanics: (e.g., spelling, punctuation, sentence structure errors)
-    2.  Clarity and Cohesion: (e.g., logical flow, clear arguments, smooth transitions)
+    2.  Clarity and Cohesion: (e.e.g., logical flow, clear arguments, smooth transitions)
     3.  Content and Development: (e.g., depth of ideas, supporting evidence, originality, relevance to the title)
     4.  Sentence Formation and Variety: (e.g., complexity, conciseness, varied structures)
     5.  Formatting and Presentation (Markdown usage): (e.g., appropriate use of headings, lists, blockquotes if any, overall readability)
@@ -457,6 +347,56 @@ def get_gemini_assessment(title, essay_markdown):
             print(f"Gemini API Prompt Feedback: {e.response.prompt_feedback}") # Log prompt feedback
             return {"error": f"AI API error: {e.response.prompt_feedback}", "raw_response": str(e)} # Include prompt feedback in error
         return {"error": f"AI API connection error: {str(e)}"} # Simplified error
+
+def process_and_submit_essay(student_user_id, title, essay_content_html):
+    if student_user_id is None:
+         print(f"[{datetime.now()}] save_essay_submission called with student_user_id = None. This is unexpected.") # Debug print
+         st.error("Could not save essay: User session issue. Please try logging out and in again.") # Simplified user error
+         return
+    if not title.strip():
+        st.warning("Please add a title before submitting your essay.") # Keep this user feedback
+        return
+
+    essay_markdown = ""
+    # Ensure content is not just empty HTML tags
+    if essay_content_html and essay_content_html != "<p><br></p>" and essay_content_html.strip() != "<p></p>":
+        try:
+            essay_markdown = md(essay_content_html)
+        except Exception as e_md:
+            print(f"Error converting essay content to Markdown: {e_md}") # Log error
+            essay_markdown = "<i>Error converting content.</i>" # Basic fallback
+            st.warning("Could not process essay formatting, submitting as plain text.") # User feedback
+    else:
+        st.warning("Essay content cannot be empty for submission.") # Keep this user feedback
+        return
+
+    with st.spinner("⏳ Evaluating and submitting your essay..."):
+        ai_feedback_data = get_gemini_assessment(title, essay_markdown)
+
+    ai_feedback_json_str = json.dumps(ai_feedback_data)
+    overall_rating = None
+    if isinstance(ai_feedback_data, dict) and "error" not in ai_feedback_data:
+        overall_rating = ai_feedback_data.get("overall_rating")
+        st.success("🎉 Essay submitted and assessed successfully!")
+        st.balloons()
+    else:
+        st.error("⚠️ There was an issue processing the AI feedback. Your essay was saved, but feedback may be missing.") # Simplified feedback error
+        # The specific AI error is logged within get_gemini_assessment
+        # If feedback data is not valid JSON or has an error, store the raw or error state
+        if isinstance(ai_feedback_data, dict):
+             ai_feedback_json_str = json.dumps(ai_feedback_data) # Save the error/raw response if it's a dict
+
+    # Save the essay regardless of AI feedback success, if content and title are valid
+    save_essay_submission(student_user_id, title, essay_markdown, ai_feedback_json_str, overall_rating)
+
+    # Reset state for next essay
+    st.session_state.essay_started = False
+    st.session_state.timer_start_time = None
+    st.session_state.essay_title_input = ""
+    st.session_state.essay_content_html = ""
+    # Redirect to student dashboard to see past submissions
+    st.session_state.view = 'student_dashboard'
+    st.rerun() # Rerun to update the view
 
 
 # --- Session State Initialization (for UI state variables) ---
@@ -817,6 +757,8 @@ else: # User is logged in
                                 # you'd need more complex logic (e.g., check if profile existed before save).
                                 # Simple approach: save successful -> user stays on profile page.
                                 pass # No view change here
+                                # Trigger a rerun to update the profile display and ensure profile_incomplete_for_display is recalculated
+                                st.rerun() # Added rerun after successful save
 
                         else:
                             st.warning("Please fill all required fields (Full Name, Department).")
