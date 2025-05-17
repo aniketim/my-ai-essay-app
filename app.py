@@ -116,7 +116,7 @@ if 'db_schema_initialized' not in st.session_state:
     initialize_database_schema()
     st.session_state.db_schema_initialized = True
 
-# --- Authentication and User Data Functions (MOVED ABOVE AI LOGIC) ---
+# --- Authentication and User Data Functions (DEFINED BEFORE AI & UI) ---
 
 def create_user(username, password, user_type, college_name=None):
     sql = "INSERT INTO users (username, password_hash, user_type, college_name) VALUES (%s, %s, %s, %s)"
@@ -338,7 +338,7 @@ def logout():
 def calculate_word_count(text):
     return len(text.split()) if text else 0
 
-# --- AI Logic Functions (MOVED ABOVE UI SECTIONS, BELOW AUTH FUNCTIONS) ---
+# --- AI Logic Functions (DEFINED BEFORE UI SECTIONS, BELOW AUTH FUNCTIONS) ---
 def get_gemini_assessment(title, essay_markdown):
     prompt = f"""
     You are an AI assistant specialized in evaluating student essays.
@@ -424,7 +424,7 @@ def get_gemini_assessment(title, essay_markdown):
 
 def process_and_submit_essay(student_user_id, title, essay_content_html):
     if student_user_id is None:
-         print(f"[{datetime.now()}] process_and_submit_essay called with student_user_id = None. This is unexpected.") # Debug print
+         print(f"[{datetime.now()}] save_essay_submission called with student_user_id = None. This is unexpected.") # Debug print
          st.error("Could not save essay: User session issue. Please try logging out and in again.") # Simplified user error
          return
     if not title.strip():
@@ -445,7 +445,7 @@ def process_and_submit_essay(student_user_id, title, essay_content_html):
         return
 
     with st.spinner("⏳ Evaluating and submitting your essay..."):
-        # get_gemini_assessment is now defined BEFORE this function
+        # get_gemini_assessment is defined before this function
         ai_feedback_data = get_gemini_assessment(title, essay_markdown)
 
     ai_feedback_json_str = json.dumps(ai_feedback_data)
@@ -463,7 +463,13 @@ def process_and_submit_essay(student_user_id, title, essay_content_html):
 
     # Save the essay regardless of AI feedback success, if content and title are valid
     # save_essay_submission is now defined BEFORE this function
-    save_essay_submission(student_user_id, title, essay_markdown, ai_feedback_json_str, overall_rating)
+    # Added a safety check to ensure save_essay_submission is defined before calling it
+    if 'save_essay_submission' in globals() and callable(save_essay_submission):
+        save_essay_submission(student_user_id, title, essay_markdown, ai_feedback_json_str, overall_rating)
+    else:
+        print(f"[{datetime.now()}] CRITICAL ERROR: save_essay_submission function is not defined when called!")
+        st.error("🚨 Critical error: Could not save essay due to an internal issue.")
+
 
     # Reset state for next essay
     st.session_state.essay_started = False
@@ -486,7 +492,7 @@ if 'current_college_name' not in st.session_state: st.session_state.current_coll
 if 'essay_title_input' not in st.session_state: st.session_state.essay_title_input = ""
 if 'essay_content_html' not in st.session_state: st.session_state.essay_content_html = ""
 if 'essay_started' not in st.session_state: st.session_state.essay_started = False
-if 'timer_start_time' not in st.session_state: st.session_state.timer_start_time = None
+if 'timer_start_time' not in st.session_state: st.session_state.timer_time = None
 if 'submission_time_limit_seconds' not in st.session_state: st.session_state.submission_time_limit_seconds = 15 * 60
 
 
