@@ -40,18 +40,20 @@ def get_db_connection():
         return conn
     except Exception as e:
         st.error(f"Failed to connect to the database. Please check secrets. Error: {e}")
-        print(f"DB Connection Error: {e}")
+        print(f"DB Connection Error: {e}") # For server logs
         return None
 
 # --- Database Initialization Function (PostgreSQL) ---
 def initialize_database_schema():
-    print(f"[{datetime.now()}] Attempting to initialize PostgreSQL schema...")
+    print(f"[{datetime.now()}] Attempting to initialize PostgreSQL schema...") # For logs
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
         if conn is None: 
             print("DB connection failed in schema initialization.")
+            # This is a critical failure, app might not be usable.
+            # Consider st.error("Critical: Database connection failed during setup.")
             return 
 
         cursor = conn.cursor()
@@ -90,7 +92,7 @@ def initialize_database_schema():
         conn.commit()
         print(f"[{datetime.now()}] PostgreSQL schema creation/check committed.")
 
-        cursor.execute("SELECT id FROM users WHERE username = %s", ('mainadmin',)) 
+        cursor.execute("SELECT id FROM users WHERE username = %s", ('mainadmin',)) # Use %s for psycopg2
         if cursor.fetchone() is None:
             cursor.execute("INSERT INTO users (username, password_hash, user_type, college_name) VALUES (%s, %s, %s, %s)",
                            ('mainadmin', generate_password_hash('superpassword123'), 'super_admin', None))
@@ -99,12 +101,14 @@ def initialize_database_schema():
             
     except (Exception, psycopg2.Error) as error:
         print(f"PostgreSQL initialization error: {error}")
+        # If init fails, app might not function. Consider re-raising or st.error
+        # raise error 
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
         print(f"[{datetime.now()}] PostgreSQL initialization routine finished.")
 
-# --- Execute schema initialization ---
+# --- Execute schema initialization (conditionally, once per app session/process) ---
 if 'db_schema_initialized' not in st.session_state:
     initialize_database_schema()
     st.session_state.db_schema_initialized = True
@@ -112,7 +116,7 @@ if 'db_schema_initialized' not in st.session_state:
 
 # --- Authentication and User Data Functions ---
 def create_user(username, password, user_type, college_name=None):
-    sql = "INSERT INTO users (username, password_hash, user_type, college_name) VALUES (%s, %s, %s, %s) RETURNING id;"
+    sql = "INSERT INTO users (username, password_hash, user_type, college_name) VALUES (%s, %s, %s, %s)"
     conn = None
     cursor = None
     try:
@@ -120,15 +124,14 @@ def create_user(username, password, user_type, college_name=None):
         if conn is None: return False, "Database connection failed."
         cursor = conn.cursor()
         cursor.execute(sql, (username, generate_password_hash(password), user_type, college_name))
-        user_id = cursor.fetchone()[0] 
         conn.commit()
-        print(f"[{datetime.now()}] User created successfully: {username}, ID: {user_id}")
-        return True, "User created successfully."
+        print(f"[{datetime.now()}] User created successfully: {username}")
+        return True, "User created successfully. Please log in." # Advise to log in
     except (Exception, psycopg2.Error) as error:
-        if isinstance(error, psycopg2.IntegrityError) and "users_username_key" in str(error).lower():
+        if isinstance(error, psycopg2.IntegrityError) and "users_username_key" in str(error).lower(): # More specific check
              return False, "Username already exists."
-        print(f"Error creating user: {error}")
-        return False, f"An error occurred: {error}"
+        print(f"Error creating user {username}: {error}")
+        return False, f"An error occurred while creating user."
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
@@ -138,46 +141,44 @@ def authenticate_user(username, password):
     cursor = None
     try:
         conn = get_db_connection(); 
-        if conn is None: return
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        if conn is None: 
+            st.error("Database connection failed during login.")
+            return
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor) # Use DictCursor
         cursor.execute("SELECT id, password_hash, user_type, college_name FROM users WHERE username = %s", (username,))
-        user_record = cursor.fetchone()
+        user_record = cursor.fetchone() # Returns a DictRow or None
         
         if user_record and check_password_hash(user_record['password_hash'], password):
             st.session_state.logged_in = True
             st.session_state.user_type = user_record['user_type']
             st.session_state.current_username = user_record['username']
-            st.session_state.current_user_id = user_record['id'] # Store the INTEGER ID from PostgreSQL SERIAL
-            st.session_state.current_college_name = user_record.get('college_name')
+            st.session_state.current_user_id = user_record['id'] # This is the crucial INTEGER ID
+            st.session_state.current_college_name = user_record.get('college_name') # Use .get for safety
             st.session_state.view = 'dashboard' 
             st.success(f"Logged in as {username} ({st.session_state.user_type})")
-            print(f"[{datetime.now()}] User {username} logged in, ID: {st.session_state.current_user_id}")
+            print(f"[{datetime.now()}] User {username} logged in. Session User ID: {st.session_state.current_user_id}")
             st.rerun()
         else:
             st.error("Invalid username or password")
     except (Exception, psycopg2.Error) as error:
         st.error(f"Authentication error. Please try again.")
-        print(f"Auth Error: {error}")
+        print(f"Auth Error for user {username}: {error}")
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
 
 def get_student_profile(user_id):
-    # --- Added Check ---
     if user_id is None: 
-        print(f"[{datetime.now()}] get_student_profile called with user_id = None. Returning None.")
+        print(f"[{datetime.now()}] get_student_profile called with user_id = None.")
         return None
-    # --- End Added Check ---
     conn = None
     cursor = None
     try:
         conn = get_db_connection(); 
         if conn is None: return None
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        print(f"[{datetime.now()}] Attempting to fetch profile for user_id: {user_id}")
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor) # Use DictCursor
         cursor.execute("SELECT full_name, department, branch, roll_number, email FROM student_profiles WHERE user_id = %s", (user_id,))
-        profile = cursor.fetchone()
-        print(f"[{datetime.now()}] Fetch profile result for {user_id}: {profile}")
+        profile = cursor.fetchone() # Returns a DictRow or None
         return profile
     except (Exception, psycopg2.Error) as error:
         print(f"Error getting student profile for user {user_id}: {error}")
@@ -187,12 +188,11 @@ def get_student_profile(user_id):
         if conn: conn.close()
 
 def save_student_profile(user_id, full_name, department, branch, roll_number, email):
-    # --- Added Check ---
     if user_id is None:
-        print(f"[{datetime.now()}] save_student_profile called with user_id = None. Cannot save.")
-        st.error("Cannot save profile: User ID is not set.")
-        return
-    # --- End Added Check ---
+        st.error("Cannot save profile: User ID is not available. Please log out and log in again.")
+        print(f"[{datetime.now()}] save_student_profile called with user_id = None.")
+        return False # Indicate failure
+        
     sql = """
         INSERT INTO student_profiles (user_id, full_name, department, branch, roll_number, email)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -205,37 +205,29 @@ def save_student_profile(user_id, full_name, department, branch, roll_number, em
     """
     conn = None
     cursor = None
-    print(f"[{datetime.now()}] Attempting to save profile for user_id: {user_id}")
-    print(f"[{datetime.now()}] Profile data: Name='{full_name}', Dept='{department}', Branch='{branch}', Roll='{roll_number}', Email='{email}'")
     try:
         conn = get_db_connection(); 
         if conn is None: 
-            print("DB connection failed in save_student_profile.")
             st.error("Failed to save profile: Database connection error.")
-            return
-
+            return False
         cursor = conn.cursor()
         cursor.execute(sql, (user_id, full_name, department, branch, roll_number, email))
         conn.commit()
-        print(f"[{datetime.now()}] Student profile saved successfully for user_id: {user_id}")
-        st.success("Profile saved successfully!")
+        print(f"[{datetime.now()}] Student profile saved/updated for user_id: {user_id}")
+        return True # Indicate success
     except (Exception, psycopg2.Error) as error:
         st.error("Failed to save profile due to an internal error.")
         print(f"[{datetime.now()}] Error saving student profile for user_id {user_id}: {error}")
+        return False
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
 
-# --- (rest of functions: save_essay_submission, get_student_essays, get_college_reports, logout, calculate_word_count, get_gemini_assessment, process_and_submit_essay) ---
-# These functions remain the same as the previous version you sent.
-
 def save_essay_submission(student_user_id, title, content_markdown, ai_feedback_json_str, overall_rating):
-    # --- Added Check ---
     if student_user_id is None:
-         print(f"[{datetime.now()}] save_essay_submission called with student_user_id = None. Cannot save essay.")
-         st.error("Cannot save essay: User ID is not set.")
+         st.error("Cannot save essay: User ID is not available. Please log out and log in again.")
+         print(f"[{datetime.now()}] save_essay_submission called with student_user_id = None.")
          return
-    # --- End Added Check ---
     sql = """
         INSERT INTO essays (student_user_id, title, content_markdown, submission_time, ai_feedback_json, overall_rating)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -245,24 +237,22 @@ def save_essay_submission(student_user_id, title, content_markdown, ai_feedback_
     submission_time_val = datetime.now()
     try:
         conn = get_db_connection(); 
-        if conn is None: return
+        if conn is None: 
+            st.error("Failed to save essay: Database connection error.")
+            return
         cursor = conn.cursor()
         db_overall_rating = overall_rating if isinstance(overall_rating, (int, float)) else None
         cursor.execute(sql, (student_user_id, title, content_markdown, submission_time_val, ai_feedback_json_str, db_overall_rating))
         conn.commit()
     except (Exception, psycopg2.Error) as error:
-        st.error("Failed to save essay.")
-        print(f"Error saving essay: {error}")
+        st.error("Failed to save essay submission.")
+        print(f"Error saving essay for user {student_user_id}: {error}")
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
 
 def get_student_essays(student_user_id):
-    # --- Added Check ---
-    if student_user_id is None:
-        print(f"[{datetime.now()}] get_student_essays called with student_user_id = None. Returning empty list.")
-        return []
-    # --- End Added Check ---
+    if student_user_id is None: return []
     conn = None
     cursor = None
     try:
@@ -298,7 +288,7 @@ def get_college_reports(college_name):
         FROM essays e
         JOIN users u ON e.student_user_id = u.id
         LEFT JOIN student_profiles sp ON u.id = sp.user_id
-        WHERE u.college_name = %s AND u.user_type = 'student' # Ensure only students are included
+        WHERE u.college_name = %s AND u.user_type = 'student'
     '''
     try:
         conn = get_db_connection(); 
@@ -308,8 +298,8 @@ def get_college_reports(college_name):
         reports_list = [dict(row) for row in cursor.fetchall()]
         return reports_list
     except (Exception, psycopg2.Error) as error:
-        st.error("Failed to fetch reports.")
-        print(f"SQL Error in get_college_reports: {error}")
+        st.error("Failed to fetch college reports.")
+        print(f"SQL Error in get_college_reports for {college_name}: {error}")
         return [] 
     finally:
         if cursor: cursor.close()
@@ -322,8 +312,8 @@ def logout():
                      'essay_title_input', 'essay_content_html', 'view'] 
     for key in keys_to_reset:
         if key in st.session_state:
-            if key != 'db_schema_initialized': 
-                del st.session_state[key] 
+            # We don't reset 'db_schema_initialized' on logout, only on full app restart by Streamlit
+            del st.session_state[key] 
     st.session_state.logged_in = False
     st.session_state.view = 'login'
     st.success("Logged out.")
@@ -334,6 +324,7 @@ def calculate_word_count(text):
 
 # --- AI Logic ---
 def get_gemini_assessment(title, essay_markdown):
+    # ... (UNCHANGED - Gemini prompt and JSON parsing) ...
     prompt = f"""
     You are an AI assistant specialized in evaluating student essays.
     The essay title is: "{title}"
@@ -400,12 +391,10 @@ def get_gemini_assessment(title, essay_markdown):
         return {"error": str(e)}
 
 def process_and_submit_essay(student_user_id, title, essay_content_html):
-    # --- Added Check ---
     if student_user_id is None:
-         print(f"[{datetime.now()}] process_and_submit_essay called with student_user_id = None. Cannot submit essay.")
-         st.error("Cannot submit essay: User ID is not set. Please log in again.")
+         st.error("Cannot submit essay: User ID is not available. Please log out and log in again.")
+         print(f"[{datetime.now()}] process_and_submit_essay called with student_user_id = None.")
          return
-    # --- End Added Check ---
     if not title.strip():
         st.warning("Essay title cannot be empty for submission.")
         return
@@ -438,12 +427,12 @@ def process_and_submit_essay(student_user_id, title, essay_content_html):
     st.session_state.essay_content_html = ""
 
 
-# --- Session State Initialization ---
+# --- Session State Initialization (for UI state variables) ---
 if 'view' not in st.session_state: st.session_state.view = 'login'
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_type' not in st.session_state: st.session_state.user_type = None
 if 'current_username' not in st.session_state: st.session_state.current_username = None
-if 'current_user_id' not in st.session_state: st.session_state.current_user_id = None # This will be the INTEGER user ID
+if 'current_user_id' not in st.session_state: st.session_state.current_user_id = None
 if 'current_college_name' not in st.session_state: st.session_state.current_college_name = None
 if 'essay_title_input' not in st.session_state: st.session_state.essay_title_input = ""
 if 'essay_content_html' not in st.session_state: st.session_state.essay_content_html = "" 
@@ -491,7 +480,7 @@ if not st.session_state.logged_in:
                     st.markdown("<br>", unsafe_allow_html=True) 
                     login_submitted = st.form_submit_button("🚀 Login", use_container_width=True, type="primary")
                     if login_submitted:
-                        authenticate_user(login_username, login_password)
+                        authenticate_user(login_username, login_password) # This sets session_state.current_user_id
         
         elif st.session_state.view == 'signup':
             with st.container(border=True): 
@@ -500,7 +489,7 @@ if not st.session_state.logged_in:
                     st.info("Create your student account to start.")
                     signup_username = st.text_input("Choose a Username", key="signup_uname_main", placeholder="e.g., Aniket Savardekar")
                     signup_password = st.text_input("Choose a Password", type="password", key="signup_pass_main", placeholder="Min. 6 characters")
-                    signup_college_name = st.text_input("Enter Your College Code", key="signup_college_main", placeholder="e.g., Ask College for College Code") 
+                    signup_college_name = st.text_input("Your College Name", key="signup_college_main", placeholder="e.g., University of Streamlit") 
                     st.markdown("<br>", unsafe_allow_html=True)
                     signup_submitted = st.form_submit_button("📝 Create Account", use_container_width=True, type="primary")
                     if signup_submitted:
@@ -510,7 +499,7 @@ if not st.session_state.logged_in:
                             else:
                                 success, message = create_user(signup_username, signup_password, 'student', signup_college_name)
                                 if success:
-                                    st.success(message + " You can now log in.")
+                                    st.success(message + " Please log in to continue.") # Changed message
                                     st.session_state.view = 'login' 
                                     st.rerun() 
                                 else: st.error(message)
@@ -518,6 +507,7 @@ if not st.session_state.logged_in:
 else: # User is logged in 
     if st.session_state.user_type == 'super_admin':
         st.header("👑 Super Admin Dashboard")
+        # ... (Super Admin UI as before) ...
         st.markdown("Manage college administrator accounts.")
         st.markdown("---")
         with st.container(border=True):
@@ -538,10 +528,11 @@ else: # User is logged in
                             else: st.error(message)
                     else: st.warning("Please fill all fields.")
 
+
     elif st.session_state.user_type == 'college_admin':
         st.header(f"🎓 College Admin: {st.session_state.current_college_name}")
+        # ... (College Admin UI with filters, sort, export as before) ...
         st.subheader("📊 Student Essay Reports")
-        
         with st.container(border=True): 
             st.markdown("#### Filter & Sort Options")
             cols_filter_sort1 = st.columns([1,1]) 
@@ -550,22 +541,18 @@ else: # User is logged in
             with cols_filter_sort1[1]:
                 sort_order_str = st.radio("Order", ["Descending", "Ascending"], index=0, horizontal=True, key="college_sort_order") 
                 sort_ascending = True if sort_order_str == "Ascending" else False
-            
             cols_filter_sort2 = st.columns([1,2]) 
             with cols_filter_sort2[0]:
                 filter_student_name = st.text_input("Filter by Student Name/Username", key="college_filter_name", placeholder="Type name...") 
             with cols_filter_sort2[1]:
                 filter_rating_min, filter_rating_max = st.slider("Filter by Overall Rating", 0, 100, (0, 100), key="college_filter_rating") 
-
             cols_date_filter = st.columns(2)
             with cols_date_filter[0]:
                 filter_date_start = st.date_input("Submissions From", value=None, key="college_filter_date_start") 
             with cols_date_filter[1]:
                 filter_date_end = st.date_input("Submissions To", value=None, key="college_filter_date_end") 
         st.markdown("---")
-
         all_reports_list = get_college_reports(st.session_state.current_college_name)
-
         if not all_reports_list:
             st.info(f"ℹ️ No student submissions found yet for {st.session_state.current_college_name}.")
         else:
@@ -595,7 +582,6 @@ else: # User is logged in
                 else: 
                      display_df = display_df.sort_values(by=sort_col_actual, ascending=sort_ascending)
                      export_ready_df = export_ready_df.sort_values(by=sort_col_actual, ascending=sort_ascending)
-                
                 if not export_ready_df.empty:
                     with st.container(border=True): 
                         st.markdown("#### 📄 Export Report")
@@ -631,7 +617,6 @@ else: # User is logged in
                         except Exception as e_excel: st.error(f"Error generating Excel file: {e_excel}")
                 elif not filtered_df.empty and (filter_date_start or filter_date_end): st.info("No reports match selected date period for export.")
                 st.markdown("---")
-
                 if display_df.empty: st.info("ℹ️ No reports match the current filter criteria.")
                 else:
                     st.markdown(f"**Displaying {len(display_df)} report(s):**")
@@ -675,45 +660,29 @@ else: # User is logged in
                                  st.error(f"Error in AI Feedback: {feedback_data.get('error')}")
                                  if 'raw_response' in feedback_data: st.text_area("Raw AI Response (for debugging):", feedback_data['raw_response'], height=100, disabled=True)
                             else: st.warning("Feedback not available for this essay.")
-    
+
+
     elif st.session_state.user_type == 'student':
         st.header(f"📝 Student Dashboard - {st.session_state.current_college_name}")
         
-        # --- Crucial Check: Only proceed if user ID is set ---
         if st.session_state.current_user_id is None:
-            # User signed up but hasn't logged in yet to get their database ID
-            st.warning("Please log out and log back in to complete your profile and start tests.")
-            st.info("This is required after signing up for the first time.")
-            # Optionally, hide the rest of the student dashboard or show a simpler message
-            st.stop() # Stop execution of the rest of the dashboard for this user session state
-        # --- End Crucial Check ---
-
+            st.warning("Your session might have expired or user ID is not set. Please log out and log back in to continue.")
+            if st.button("Log Out to Refresh Session"):
+                logout()
+            st.stop() 
+        
         student_profile = get_student_profile(st.session_state.current_user_id) 
         
-        # --- Debugging Prints/Writes (Keep for now) ---
-        # print(f"[{datetime.now()}] Student Dashboard for user ID: {st.session_state.current_user_id}")
-        # st.info(f"Debug: Current User ID is `{st.session_state.current_user_id}`") 
-        # print(f"[{datetime.now()}] Fetched student_profile data: {student_profile}") 
-        # st.info(f"Debug: Fetched Profile is `{student_profile}`") 
-        # --- End Debugging ---
-
         profile_incomplete = True 
         if student_profile: 
-            # Access using .get() is safe for DictRow
             if student_profile.get('full_name') and student_profile.get('department'):
                 profile_incomplete = False
         
-        # --- Debugging Prints/Writes (Keep for now) ---
-        # print(f"[{datetime.now()}] Profile incomplete check: {profile_incomplete}")
-        # st.info(f"Debug: Profile Incomplete is `{profile_incomplete}`") 
-        # --- End Debugging ---
-
         if profile_incomplete: 
             with st.container(border=True):
                 st.subheader("👤 Complete Your Profile")
                 st.info("Please complete your profile to proceed. Fields marked with * are required.")
                 with st.form("profile_form_student"):
-                    # Access using .get() with default '' is safe for DictRow/None
                     s_full_name_default = student_profile.get('full_name', '') if student_profile else ""
                     s_department_default = student_profile.get('department', '') if student_profile else ""
                     s_branch_default = student_profile.get('branch', '') if student_profile else ""
@@ -731,24 +700,15 @@ else: # User is logged in
                     st.markdown("<br>", unsafe_allow_html=True)
                     submit_profile = st.form_submit_button("💾 Save Profile", use_container_width=True, type="primary")
                     
-                    # --- Debugging Prints/Writes (Keep for now) ---
-                    # print(f"[{datetime.now()}] Profile form submitted: {submit_profile}")
-                    # if submit_profile:
-                    #      print(f"[{datetime.now()}] Profile form values: Name='{s_full_name}', Dept='{s_department}', Branch='{s_branch}', Roll='{s_roll_number}', Email='{s_email}'")
-                    # --- End Debugging ---
-
                     if submit_profile:
                         if s_full_name and s_department: 
-                            print(f"[{datetime.now()}] Validation passed. Calling save_student_profile with user_id: {st.session_state.current_user_id}...") # Log user ID before save
-                            save_student_profile(st.session_state.current_user_id, s_full_name, s_department, s_branch, s_roll_number,s_email)
-                            # save_student_profile includes st.success("Profile saved successfully!")
-                            st.rerun() 
+                            if save_student_profile(st.session_state.current_user_id, s_full_name, s_department, s_branch, s_roll_number,s_email):
+                                st.success("Profile saved successfully!") # Moved success message here from the function
+                                st.rerun() 
+                            # else: save_student_profile already shows an error if it fails
                         else: 
-                            print(f"[{datetime.now()}] Validation failed.") 
                             st.warning("Please fill all required fields (Full Name, Department).")
         
-        # ... (Rest of Student Dashboard - Essay Writing and Past Submissions) ...
-        # These sections are now only reached if st.session_state.current_user_id is NOT None AND profile_incomplete is False
         elif not st.session_state.essay_started:
             with st.container(border=True):
                 st.subheader("✍️ Start New Essay Test")
@@ -764,7 +724,6 @@ else: # User is logged in
 
         elif st.session_state.essay_started:
             st.subheader(f"⏳ Writing: {st.session_state.essay_title_input}")
-            
             time_elapsed = time.time() - st.session_state.timer_start_time
             time_remaining = st.session_state.submission_time_limit_seconds - time_elapsed
             
@@ -776,7 +735,6 @@ else: # User is logged in
                 html=True, 
                 toolbar=toolbar_config_essential, 
                 key="quill_editor_main",
-                # height=400 
             )
             st.session_state.essay_content_html = essay_html_content
 
@@ -806,7 +764,7 @@ else: # User is logged in
                 submit_button_placeholder.empty() 
                 if st.session_state.essay_started: 
                     st.warning("Time's up! Submitting your essay automatically...")
-                    process_and_submit_essay(st.session_state.current_user_id, st.session_state.essay_title_input, essay_content_html)
+                    process_and_submit_essay(st.session_state.current_user_id, st.session_state.essay_title_input, essay_html_content) # Use current essay_html_content
                     st.rerun() 
         
         student_essays = get_student_essays(st.session_state.current_user_id) 
