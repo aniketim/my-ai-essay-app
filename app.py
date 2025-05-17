@@ -417,7 +417,7 @@ if 'submission_time_limit_seconds' not in st.session_state: st.session_state.sub
 
 # --- UI Sections (Using the UI enhancements from the previous response) ---
 with st.sidebar:
-    st.image(https://truskill.in/images/logo/logo.png, width=180) 
+    st.image(APP_LOGO_URL, width=180) 
     st.title("AI Essay Grader") # Simplified title as logo is prominent
     st.markdown("---")
     if st.session_state.logged_in:
