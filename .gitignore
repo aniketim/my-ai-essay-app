@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+venv/
+.env
+# Add your database file to ignore
+essay_grader.db 
+# Also ignore local secrets if they contain real keys
+.streamlit/secrets.toml 
