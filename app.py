@@ -429,7 +429,7 @@ with st.sidebar:
         if st.button("🚪 Logout", key="logout_button_sidebar", use_container_width=True, type="secondary"):
             logout()
     else:
-        st.info("Please login or sign up to continue.")
+        st.info("New Students, sign up Here.")
         if st.session_state.view == 'login':
             if st.button("✨ Don't have an account? Sign Up", key="goto_signup_sidebar", use_container_width=True):
                 st.session_state.view = 'signup'
@@ -439,7 +439,7 @@ with st.sidebar:
                 st.session_state.view = 'login'
                 st.rerun()
     st.markdown("---")
-    st.caption("Powered by Google Gemini & Streamlit")
+    st.caption("Powered by Truskill AI Technology")
 
 if not st.session_state.logged_in:
     _, mid_col, _ = st.columns([0.5, 2, 0.5]) 
@@ -461,9 +461,9 @@ if not st.session_state.logged_in:
                 st.header("👋 Student Sign Up")
                 with st.form("signup_form_main"):
                     st.info("Create your student account to start.")
-                    signup_username = st.text_input("Choose a Username", key="signup_uname_main", placeholder="e.g., jane_doe")
+                    signup_username = st.text_input("Choose a Username", key="signup_uname_main", placeholder="e.g., Aniket Savardekar")
                     signup_password = st.text_input("Choose a Password", type="password", key="signup_pass_main", placeholder="Min. 6 characters")
-                    signup_college_name = st.text_input("Your College Name", key="signup_college_main", placeholder="e.g., Streamlit University") 
+                    signup_college_name = st.text_input("Enter Your College Code", key="signup_college_main", placeholder="e.g., Ask College for College Code") 
                     st.markdown("<br>", unsafe_allow_html=True)
                     signup_submitted = st.form_submit_button("📝 Create Account", use_container_width=True, type="primary")
                     if signup_submitted:
