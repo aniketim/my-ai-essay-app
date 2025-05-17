@@ -380,36 +380,51 @@ def get_gemini_assessment(title, essay_markdown):
       "overall_rating": <integer_0_to_100_rating>
     }}
     """
+    response = None # Initialize response to None
+    response_text = None # Initialize response_text to None
     try:
         response = gemini_model.generate_content(prompt)
-        response_text = response.text
+        response_text = response.text # This line might fail if response is not as expected
+
         # Keep the JSON parsing logic the same - it seems robust
-        if response_text.strip().startswith("```json"):
-            response_text = response_text.strip()[7:-3].strip()
-        elif response_text.strip().startswith("```"):
-             response_text = response_text.strip()[3:-3].strip()
-        json_start_index = response_text.find('{')
-        json_end_index = response_text.rfind('}') + 1
-        if json_start_index != -1 and json_end_index != -1 :
-            json_string = response_text[json_start_index:json_end_index]
-            parsed_response = json.loads(json_string)
-            return parsed_response
+        if response_text is not None: # Add a check here before trying to parse
+            if response_text.strip().startswith("```json"):
+                response_text = response_text.strip()[7:-3].strip()
+            elif response_text.strip().startswith("```"):
+                 response_text = response_text.strip()[3:-3].strip()
+            json_start_index = response_text.find('{')
+            json_end_index = response_text.rfind('}') + 1
+            if json_start_index != -1 and json_end_index != -1 :
+                json_string = response_text[json_start_index:json_end_index]
+                parsed_response = json.loads(json_string)
+                return parsed_response
+            else:
+                print(f"AI Response JSON parse failure. Raw: {response_text}") # Log raw response
+                return {"error": "AI feedback format issue.", "raw_response": response_text} # Simplified error
         else:
-            print(f"AI Response JSON parse failure. Raw: {response_text}") # Log raw response
-            return {"error": "AI feedback format issue.", "raw_response": response_text} # Simplified error
+             print("AI Response text was None.") # Log this unexpected state
+             return {"error": "AI response text is empty or missing."}
+
     except json.JSONDecodeError as e:
-        print(f"Error decoding JSON from AI: {e}. Raw response: {response.text}") # Log detailed error
-        return {"error": "AI feedback parsing error.", "raw_response": response.text} # Simplified error
+        print(f"Error decoding JSON from AI: {e}. Raw response: {response_text}") # Use response_text if available
+        raw_resp_info = response_text if response_text is not None else str(response) # Provide raw info if possible
+        return {"error": f"AI feedback parsing error: {e}", "raw_response": raw_resp_info} # Simplified error
     except Exception as e:
         print(f"Error getting assessment from Gemini: {e}") # Log detailed error
+        error_details = str(e)
+        raw_resp_info = None
+
         if hasattr(e, 'response') and hasattr(e.response, 'prompt_feedback'):
             print(f"Gemini API Prompt Feedback: {e.response.prompt_feedback}") # Log prompt feedback
-            return {"error": f"AI API error: {e.response.prompt_feedback}", "raw_response": str(e)} # Include prompt feedback in error
-        return {"error": f"AI API connection error: {str(e)}"} # Simplified error
+            error_details = f"AI API error: {e.response.prompt_feedback}"
+        elif response is not None and hasattr(response, 'text'):
+             raw_resp_info = response.text # Get text from response if exception happened later
+
+        return {"error": error_details, "raw_response": raw_resp_info} # Simplified error with details
 
 def process_and_submit_essay(student_user_id, title, essay_content_html):
     if student_user_id is None:
-         print(f"[{datetime.now()}] save_essay_submission called with student_user_id = None. This is unexpected.") # Debug print
+         print(f"[{datetime.now()}] process_and_submit_essay called with student_user_id = None. This is unexpected.") # Debug print
          st.error("Could not save essay: User session issue. Please try logging out and in again.") # Simplified user error
          return
     if not title.strip():
@@ -430,6 +445,7 @@ def process_and_submit_essay(student_user_id, title, essay_content_html):
         return
 
     with st.spinner("⏳ Evaluating and submitting your essay..."):
+        # get_gemini_assessment is now defined BEFORE this function
         ai_feedback_data = get_gemini_assessment(title, essay_markdown)
 
     ai_feedback_json_str = json.dumps(ai_feedback_data)
@@ -876,7 +892,7 @@ else: # User is logged in
                  )
                  st.session_state.essay_content_html = essay_html_content # Update session state
 
-                 # *** MOVE WORD COUNT CALCULATION HERE, AFTER essay_html_content IS DEFINED ***
+                 # *** WORD COUNT CALCULATION MOVED HERE ***
                  # The columns col_timer, col_wc, col_submit were defined above the timer display
                  with col_wc: # Use the previously defined word count column
                      temp_markdown_for_wc = md(essay_html_content) if essay_html_content and essay_html_content != "<p><br></p>" and essay_html_content.strip() != "<p></p>" else ""
