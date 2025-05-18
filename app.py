@@ -262,6 +262,41 @@ def save_student_profile(user_id, full_name, department, branch, roll_number, em
         if cursor: cursor.close()
         if conn: conn.close()
 
+# --- ADDED save_essay_submission FUNCTION DEFINITION HERE ---
+def save_essay_submission(student_user_id, title, content_markdown, ai_feedback_json_str, overall_rating):
+    """
+    Inserts a new essay record into the essays table.
+    """
+    if student_user_id is None:
+         print(f"[{datetime.now()}] save_essay_submission called with student_user_id = None.")
+         st.error("Cannot save essay: User ID is not available. Please log out and log in again.")
+         return False # Indicate failure
+    sql = """
+        INSERT INTO essays (student_user_id, title, content_markdown, submission_time, ai_feedback_json, overall_rating)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    conn = None
+    cursor = None
+    submission_time_val = datetime.now()
+    try:
+        conn = get_db_connection();
+        if conn is None:
+            st.error("Failed to save essay: Database connection error.")
+            return False # Indicate failure
+        cursor = conn.cursor()
+        db_overall_rating = overall_rating if isinstance(overall_rating, (int, float)) else None
+        cursor.execute(sql, (student_user_id, title, content_markdown, submission_time_val, ai_feedback_json_str, db_overall_rating))
+        conn.commit()
+        print(f"[{datetime.now()}] Essay saved successfully for user {student_user_id}")
+        return True # Indicate success
+    except (Exception, psycopg2.Error) as error:
+        st.error("Failed to save essay submission.")
+        print(f"Error saving essay for user {student_user_id}: {error}")
+        return False # Indicate failure
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 def get_student_essays(student_user_id):
     if student_user_id is None: return [] # Return empty list if user_id is missing
     conn = None
