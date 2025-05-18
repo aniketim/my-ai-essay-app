@@ -409,29 +409,30 @@ def get_gemini_assessment(title, essay_markdown):
     except json.JSONDecodeError as e:
         # This block is reached if JSON decoding fails *after* response_text is assigned
         print(f"Error decoding JSON from AI: {e}. Raw response: {response_text}") # response_text should be available here
-        raw_resp_info = response_text if response_text is not None else "Response text was None"
+        raw_resp_info = response_text if response_text is not None else "Response text was None or unassignable"
         return {"error": f"AI feedback parsing error: {e}", "raw_response": raw_resp_info} # Simplified error
 
     except Exception as e:
         # *** This block is reached for any other exception during generate_content or response.text access ***
         print(f"Error getting assessment from Gemini: {e}") # Log detailed error
         error_details = str(e)
-        raw_resp_info = None
+        raw_resp_info = "Could not get raw response due to an early error."
 
-        if hasattr(e, 'response') and hasattr(e.response, 'prompt_feedback'):
-            print(f"Gemini API Prompt Feedback: {e.response.prompt_feedback}") # Log prompt feedback
-            error_details = f"AI API error: {e.response.prompt_feedback}"
-            if hasattr(e.response, 'text'): # Check if the error response has text
-                 raw_resp_info = e.response.text
-        elif response is not None and hasattr(response, 'text'): # Check if original response was assigned and has text
-             raw_resp_info = response.text # Get text from response if exception happened later
+        # Attempt to get more info if response object exists
+        if response is not None:
+            error_details = f"AI API error: {str(e)}"
+            if hasattr(response, 'prompt_feedback'): # Check for prompt feedback attribute
+                 print(f"Gemini API Prompt Feedback: {response.prompt_feedback}") # Log prompt feedback
+                 error_details += f" | Prompt Feedback: {response.prompt_feedback}"
+            if hasattr(response, 'text'): # Check if the response object has text
+                 raw_resp_info = response.text
 
         return {"error": error_details, "raw_response": raw_resp_info} # Simplified error with details
 
 
 def process_and_submit_essay(student_user_id, title, essay_content_html):
     if student_user_id is None:
-         print(f"[{datetime.now()}] save_essay_submission called with user_id = None. This is unexpected.") # Debug print
+         print(f"[{datetime.now()}] process_and_submit_essay called with student_user_id = None. This is unexpected.") # Debug print
          st.error("Could not save essay: User session issue. Please try logging out and in again.") # Simplified user error
          return
     if not title.strip():
@@ -440,7 +441,7 @@ def process_and_submit_essay(student_user_id, title, essay_content_html):
 
     essay_markdown = ""
     # Ensure content is not just empty HTML tags
-    if essay_html_content and essay_html_content != "<p><br></p>" and essay_html_content.strip() != "<p></p>":
+    if essay_html_content and essay_html_content != "<p><br></p>" and essay_content_html.strip() != "<p></p>":
         try:
             essay_markdown = md(essay_html_content)
         except Exception as e_md:
@@ -454,27 +455,48 @@ def process_and_submit_essay(student_user_id, title, essay_content_html):
     with st.spinner("⏳ Evaluating and submitting your essay..."):
         # get_gemini_assessment is defined before this function
         ai_feedback_data = get_gemini_assessment(title, essay_markdown)
+        print(f"[{datetime.now()}] DEBUG: Result from get_gemini_assessment: {ai_feedback_data}") # Debug print
 
-    ai_feedback_json_str = json.dumps(ai_feedback_data)
-    overall_rating = None
-    if isinstance(ai_feedback_data, dict) and "error" not in ai_feedback_data:
-        overall_rating = ai_feedback_data.get("overall_rating")
-        st.success("🎉 Essay submitted and assessed successfully!")
-        st.balloons()
+    ai_feedback_json_str = None # Initialize to None
+    overall_rating = None # Initialize to None
+
+    if isinstance(ai_feedback_data, dict):
+        print(f"[{datetime.now()}] DEBUG: AI feedback data is a dict.") # Debug print
+        # Always attempt to dump the dictionary to JSON string
+        try:
+             ai_feedback_json_str = json.dumps(ai_feedback_data)
+             print(f"[{datetime.now()}] DEBUG: Dumped AI feedback data to JSON string.") # Debug print
+        except Exception as e:
+             print(f"[{datetime.now()}] ERROR: Could not dump AI feedback dict to JSON string: {e}")
+             ai_feedback_json_str = json.dumps({"error": f"Internal error dumping feedback: {e}"})
+             st.error("⚠️ Internal error preparing AI feedback for saving.")
+
+
+        if "error" not in ai_feedback_data:
+            overall_rating = ai_feedback_data.get("overall_rating")
+            print(f"[{datetime.now()}] DEBUG: AI feedback data has no 'error'. Overall rating: {overall_rating}") # Debug print
+            st.success("🎉 Essay submitted and assessed successfully!")
+            st.balloons()
+        else:
+            # AI returned an error dictionary
+            print(f"[{datetime.now()}] DEBUG: AI feedback data contains 'error': {ai_feedback_data.get('error')}") # Debug print
+            st.error("⚠️ There was an issue processing the AI feedback. Your essay was saved, but feedback may be missing.") # Simplified feedback error
+            # ai_feedback_json_str is already set to the dumped error dictionary above
     else:
-        st.error("⚠️ There was an issue processing the AI feedback. Your essay was saved, but feedback may be missing.") # Simplified feedback error
-        # The specific AI error is logged within get_gemini_assessment
-        # If feedback data is not valid JSON or has an error, store the raw or error state
-        if isinstance(ai_feedback_data, dict):
-             ai_feedback_json_str = json.dumps(ai_feedback_data) # Save the error/raw response if it's a dict
-        else: # Handle cases where ai_feedback_data is not a dict (e.g., None from an error)
-             ai_feedback_json_str = json.dumps({"error": "AI feedback data is not a valid structure."})
+        # get_gemini_assessment did not return a dictionary (e.g., returned None unexpectedly)
+        print(f"[{datetime.now()}] ERROR: get_gemini_assessment did not return a dictionary. Returned: {ai_feedback_data}") # Debug print
+        ai_feedback_json_str = json.dumps({"error": "AI feedback data is not a valid structure or was None."})
+        st.error("⚠️ An unexpected issue occurred with AI feedback. Your essay was saved, but feedback may be missing.")
 
 
     # Save the essay regardless of AI feedback success, if content and title are valid
-    # save_essay_submission is now defined BEFORE this function
-    # Removed the callable check as it seems to be part of the issue, relying on definition order
+    # save_essay_submission is defined BEFORE this function
+    # Removed the callable check, relying on definition order
+    # The check for save_essay_submission being defined should now pass
+    print(f"[{datetime.now()}] DEBUG: Calling save_essay_submission...") # Debug print
     save_essay_submission(student_user_id, title, essay_markdown, ai_feedback_json_str, overall_rating)
+    print(f"[{datetime.now()}] DEBUG: save_essay_submission called.") # Debug print
+
 
     # Reset state for next essay
     st.session_state.essay_started = False
