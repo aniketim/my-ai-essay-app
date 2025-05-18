@@ -383,39 +383,37 @@ def get_gemini_assessment(title, essay_markdown):
     ---
     {essay_markdown}
     ---
-    Please assess the essay based on the following criteria. For each criterion, provide a score from 0 to 10 (0 being very poor, 10 being excellent) and a brief justification.
-    1.  Grammar and Mechanics: (e.g., spelling, punctuation, sentence structure errors)
-    2.  Clarity and Cohesion: (e.g., logical flow, clear arguments, smooth transitions)
-    3.  Content and Development: (e.g., depth of ideas, supporting evidence, originality, relevance to the title)
-    4.  Sentence Formation and Variety: (e.g., complexity, conciseness, varied structures)
-    5.  Formatting and Presentation (Markdown usage): (e.g., appropriate use of headings, lists, blockquotes if any, overall readability)
+    Please assess the essay based on the following five criteria. For each, give a score from 0 to 10 (0 = very poor, 10 = excellent) and a brief justification:
 
-    After assessing individual criteria, also provide:
-    -   Overall Word Count: The actual word count of the essay.
-    -   Overall Feedback: A concise summary (2-3 sentences) of the essay's main strengths and areas for improvement.
-    -   Overall Rating: A single numerical score from 0 to 100. This should be a weighted calculation based on the criteria scores. For example:
-        - Grammar: 20%
-        - Clarity and Cohesion: 25%
-        - Content and Development: 30%
-        - Sentence Formation: 15%
-        - Formatting: 10%
+    1. Grammar (20%): spelling, punctuation, sentence structure, mechanics  
+    2. Relevancy and Cohesion with Title (25%): how well the content stays on topic and flows logically relative to the title  
+    3. Clarity and Content Development (25%): depth of ideas, supporting evidence, originality, and clarity of argument  
+    4. Sentence Formation (25%): variety and complexity of sentence structures, conciseness  
+    5. Formatting (10%): appropriate Markdown usage (headings, lists, blockquotes) and overall readability  
 
-    Output the entire response STRICTLY in the following JSON format. Do not include any text before or after the JSON object.
-    Ensure all string values within the JSON are properly escaped.
+    After scoring, also provide:
+    - Overall Word Count  
+    - Overall Feedback: a concise summary (2 to 3 sentences) of the essays main strengths and areas to improve  
+    - Overall Rating: a single number from 0 to 100, computed by applying the above weights  
+
+    Output **only** the following JSON object (no extra text), with all strings properly escaped:
 
     {{
       "criteria_scores": {{
-        "grammar_and_mechanics": {{"score": <integer_0_to_10>, "justification": "<string_justification>"}},
-        "clarity_and_cohesion": {{"score": <integer_0_to_10>, "justification": "<string_justification>"}},
-        "content_and_development": {{"score": <integer_0_to_10>, "justification": "<string_justification>"}},
-        "sentence_formation_and_variety": {{"score": <integer_0_to_10>, "justification": "<string_justification>"}},
-        "formatting_and_presentation": {{"score": <integer_0_to_10>, "justification": "<string_justification>"}}
+        "grammar": {{"score": <int_0_to_10>, "justification": "<string>"}},
+        "relevancy_and_cohesion": {{"score": <int_0_to_10>, "justification": "<string>"}},
+        "clarity_and_content_development": {{"score": <int_0_to_10>, "justification": "<string>"}},
+        "sentence_formation": {{"score": <int_0_to_10>, "justification": "<string>"}},
+        "formatting": {{"score": <int_0_to_10>, "justification": "<string>"}}
       }},
-      "word_count": <integer_word_count>,
-      "overall_feedback": "<string_summary_feedback>",
-      "overall_rating": <integer_0_to_100_rating>
+      "word_count": <int_word_count>,
+      "overall_feedback": "<string>",
+      "overall_rating": <int_0_to_100>
     }}
     """
+    response = gemini_model.generate_content(prompt)
+    # …rest of your parsing logic…
+
     response = None # Initialize response to None
     response_text = None # Initialize response_text to None
 
