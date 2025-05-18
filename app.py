@@ -29,7 +29,7 @@ except KeyError:
     st.stop() # Critical failure, cannot proceed without API key
 
 genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel(model_name='gemini-1.5-pro-latest')
+gemini_model = genai.GenerativeModel(model_name='gemini-1.5-flash-latest')
 
 # --- Database Connection Function (PostgreSQL) ---
 # Keep the same connection logic, but potentially simplify error display for users
@@ -360,7 +360,8 @@ def logout():
     # Reset all relevant session state variables on logout
     keys_to_reset = ['logged_in', 'user_type', 'current_username', 'current_user_id',
                      'current_college_name', 'essay_started', 'timer_start_time',
-                     'essay_title_input', 'essay_content_html', 'view']
+                     'essay_title_input', 'essay_content_html', 'view',
+                     'profile_page_loaded'] # Add profile_page_loaded to reset list
     for key in keys_to_reset:
         if key in st.session_state:
             del st.session_state[key]
@@ -555,6 +556,7 @@ if 'essay_content_html' not in st.session_state: st.session_state.essay_content_
 if 'essay_started' not in st.session_state: st.session_state.essay_started = False
 if 'timer_start_time' not in st.session_state: st.session_state.timer_start_time = None
 if 'submission_time_limit_seconds' not in st.session_state: st.session_state.submission_time_limit_seconds = 15 * 60
+if 'profile_page_loaded' not in st.session_state: st.session_state.profile_page_loaded = False
 
 
 # --- UI Sections ---
@@ -574,6 +576,7 @@ with st.sidebar:
              # Student navigation
              if st.button("👤 Edit Profile", use_container_width=True, key="nav_edit_profile"):
                  st.session_state.view = 'student_profile'
+                 st.session_state.pop('profile_page_loaded', None) # Clear flag to reload defaults
                  st.rerun()
              if st.button("✍️ Start New Essay", use_container_width=True, key="nav_new_essay"):
                   st.session_state.view = 'student_essay'
@@ -582,34 +585,40 @@ with st.sidebar:
                   st.session_state.timer_start_time = None
                   st.session_state.essay_title_input = ""
                   st.session_state.essay_content_html = ""
+                  st.session_state.pop('profile_page_loaded', None) # Clear flag if navigating away from profile
                   st.rerun()
              if st.button("📚 View Past Submissions", use_container_width=True, key="nav_past_submissions"):
                   st.session_state.view = 'student_dashboard'
+                  st.session_state.pop('profile_page_loaded', None) # Clear flag if navigating away from profile
                   st.rerun()
         elif st.session_state.user_type in ['college_admin', 'super_admin']:
             # Admin navigation
             if st.button("📊 View Reports", use_container_width=True, key="nav_view_reports"):
                   st.session_state.view = 'dashboard' # Admins share the main dashboard view
+                  st.session_state.pop('profile_page_loaded', None) # Clear flag if navigating away from profile
                   st.rerun()
         # Super Admin specific nav
         if st.session_state.user_type == 'super_admin':
              if st.button("👑 Admin Management", use_container_width=True, key="nav_admin_management"):
                   st.session_state.view = 'super_admin_manage'
+                  st.session_state.pop('profile_page_loaded', None) # Clear flag if navigating away from profile
                   st.rerun()
 
         st.markdown("---")
         if st.button("🚪 Logout", key="logout_button_sidebar", use_container_width=True, type="secondary"):
-            logout()
+            logout() # logout() already clears profile_page_loaded
     else:
         st.info("Welcome! Please log in or sign up.")
         # Simplified sidebar buttons for login/signup
         if st.session_state.view == 'login':
             if st.button("✨ New Student? Sign Up", key="goto_signup_sidebar", use_container_width=True):
                 st.session_state.view = 'signup'
+                st.session_state.pop('profile_page_loaded', None) # Clear flag
                 st.rerun()
         elif st.session_state.view == 'signup':
             if st.button("🔒 Already have an account? Login", key="goto_login_sidebar", use_container_width=True):
                 st.session_state.view = 'login'
+                st.session_state.pop('profile_page_loaded', None) # Clear flag
                 st.rerun()
     st.markdown("---")
     st.caption("Powered by Truskill AI Technology")
@@ -872,6 +881,20 @@ else: # User is logged in
              if student_profile.get('full_name', '').strip() and student_profile.get('department', '').strip():
                  profile_incomplete_for_display = False
 
+        # --- Manage profile_page_loaded flag to reset widget states ---
+        if st.session_state.view == 'student_profile':
+            if not st.session_state.get('profile_page_loaded', False):
+                # Clear any old widget state for these inputs when entering the profile page
+                profile_widget_keys = ['profile_full_name', 'profile_department', 'profile_branch', 'profile_roll', 'profile_email']
+                for k in profile_widget_keys:
+                    if k in st.session_state: # Check if key exists before popping
+                        del st.session_state[k]
+                st.session_state.profile_page_loaded = True
+        else:
+            # If not on profile page, ensure the flag is cleared for next visit
+            if 'profile_page_loaded' in st.session_state:
+                 del st.session_state.profile_page_loaded
+
 
         # --- Display the correct view based on st.session_state.view ---
         if st.session_state.view == 'student_profile':
@@ -893,14 +916,14 @@ else: # User is logged in
                     s_email_default = student_profile.get('email', '') if student_profile and isinstance(student_profile, dict) else ""
 
 
-                    s_full_name = st.text_input("Full Name*", value=s_full_name_default, placeholder="Your full name")
-                    s_department = st.text_input("Department*", value=s_department_default, placeholder="e.g., Computer Science")
+                    s_full_name = st.text_input("Full Name*", value=s_full_name_default, key="profile_full_name", placeholder="Your full name")
+                    s_department = st.text_input("Department*", value=s_department_default, key="profile_department", placeholder="e.g., Computer Science")
                     col1, col2 = st.columns([1,1])
                     with col1:
-                        s_branch = st.text_input("Branch (Optional)", value=s_branch_default, placeholder="-")
+                        s_branch = st.text_input("Branch (Optional)", value=s_branch_default, key="profile_branch", placeholder="-")
                     with col2:
-                        s_roll_number = st.text_input("Roll Number (Optional)", value=s_roll_number_default, placeholder="Your roll number")
-                    s_email = st.text_input("Email (Optional)", value=s_email_default, placeholder="your.email@example.com")
+                        s_roll_number = st.text_input("Roll Number (Optional)", value=s_roll_number_default, key="profile_roll", placeholder="Your roll number")
+                    s_email = st.text_input("Email (Optional)", value=s_email_default, key="profile_email", placeholder="your.email@example.com")
                     st.markdown("<br>", unsafe_allow_html=True)
                     submit_profile = st.form_submit_button("💾 Save Profile", use_container_width=True, type="primary")
 
@@ -908,17 +931,10 @@ else: # User is logged in
                         if s_full_name and s_department:
                             if save_student_profile(st.session_state.current_user_id, s_full_name, s_department, s_branch, s_roll_number,s_email):
                                 st.success("Profile saved successfully!")
-                                # Stay on profile page after saving if navigated here via 'Edit Profile'
-                                # If they were redirected here after login because profile was incomplete,
-                                # you might want to redirect them to essay page here.
-                                # For this version, let's keep them on the profile page after save,
-                                # and they can navigate to essay/dashboard from the sidebar.
-                                # If you want to auto-redirect to essay *only* after the *first* save,
-                                # you'd need more complex logic (e.g., check if profile existed before save).
-                                # Simple approach: save successful -> user stays on profile page.
-                                pass # No view change here
-                                # Trigger a rerun to update the profile display and ensure profile_incomplete_for_display is recalculated
-                                st.rerun() # Added rerun after successful save
+                                # After saving, clear the loaded flag so defaults will apply next time
+                                if 'profile_page_loaded' in st.session_state:
+                                     del st.session_state.profile_page_loaded
+                                st.rerun() # Rerun to update the profile display (and keep on this page)
 
                         else:
                             st.warning("Please fill all required fields (Full Name, Department).")
@@ -1023,6 +1039,7 @@ else: # User is logged in
                      st.session_state.timer_start_time = None
                      st.session_state.essay_title_input = ""
                      st.session_state.essay_content_html = ""
+                     st.session_state.pop('profile_page_loaded', None) # Clear flag
                      st.rerun()
              else:
                  st.markdown("---")
