@@ -29,7 +29,7 @@ except KeyError:
     st.stop() # Critical failure, cannot proceed without API key
 
 genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel(model_name='gemini-1.5-flash-latest')
+gemini_model = genai.GenerativeModel(model_name='gemini-1.5-pro-latest')
 
 # --- Database Connection Function (PostgreSQL) ---
 # Keep the same connection logic, but potentially simplify error display for users
