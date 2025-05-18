@@ -179,6 +179,7 @@ def authenticate_user(username, password):
                      st.session_state.timer_start_time = None
                      st.session_state.essay_title_input = ""
                      st.session_state.essay_content_html = ""
+                     st.session_state.pop('profile_page_loaded', None) # Clear profile flag on login
                      # print(f"[{datetime.now()}] Auth: Redirecting student to essay view.") # Debug print
                 else:
                     st.session_state.view = 'dashboard' # Admins go to general dashboard view
@@ -574,9 +575,9 @@ with st.sidebar:
         # Sidebar navigation for logged-in users
         if st.session_state.user_type == 'student':
              # Student navigation
-             if st.button("👤 Edit Profile", use_container_width=True, key="nav_edit_profile"):
-                 st.session_state.view = 'student_profile'
-                 st.session_state.pop('profile_page_loaded', None) # Clear flag to reload defaults
+             if st.button("👤 View Profile", use_container_width=True, key="nav_view_profile"): # Changed from "Edit Profile"
+                 st.session_state.view = 'student_view_profile' # New view state
+                 st.session_state.pop('profile_page_loaded', None) # Clear flag when navigating to view
                  st.rerun()
              if st.button("✍️ Start New Essay", use_container_width=True, key="nav_new_essay"):
                   st.session_state.view = 'student_essay'
@@ -882,7 +883,7 @@ else: # User is logged in
                  profile_incomplete_for_display = False
 
         # --- Manage profile_page_loaded flag to reset widget states ---
-        if st.session_state.view == 'student_profile':
+        if st.session_state.view == 'student_profile': # Edit Profile Form View
             if not st.session_state.get('profile_page_loaded', False):
                 # Clear any old widget state for these inputs when entering the profile page
                 profile_widget_keys = ['profile_full_name', 'profile_department', 'profile_branch', 'profile_roll', 'profile_email']
@@ -890,22 +891,52 @@ else: # User is logged in
                     if k in st.session_state: # Check if key exists before popping
                         del st.session_state[k]
                 st.session_state.profile_page_loaded = True
+        elif st.session_state.view == 'student_view_profile': # New View Profile Page
+             st.session_state.pop('profile_page_loaded', None) # Clear flag when entering view profile
         else:
-            # If not on profile page, ensure the flag is cleared for next visit
+            # If not on profile page or view profile page, ensure the flag is cleared for next visit
             if 'profile_page_loaded' in st.session_state:
                  del st.session_state.profile_page_loaded
 
 
         # --- Display the correct view based on st.session_state.view ---
-        if st.session_state.view == 'student_profile':
+        if st.session_state.view == 'student_view_profile':
+             # --- Student View Profile (Read-Only) ---
+             st.header(f"👤 Your Profile - {st.session_state.current_college_name}")
+             st.markdown("---")
+             # Fetch fresh profile for display
+             current_profile_data = get_student_profile(st.session_state.current_user_id) or {}
+
+             cols_profile_view = st.columns(2)
+             with cols_profile_view[0]:
+                 st.markdown(f"**Full Name:**")
+                 st.markdown(f"### {current_profile_data.get('full_name','—')}")
+                 st.markdown(f"**Department:**")
+                 st.markdown(f"### {current_profile_data.get('department','—')}")
+             with cols_profile_view[1]:
+                 st.markdown(f"**Branch:**")
+                 st.markdown(f"### {current_profile_data.get('branch','—')}")
+                 st.markdown(f"**Roll Number:**")
+                 st.markdown(f"### {current_profile_data.get('roll_number','—')}")
+
+             st.markdown(f"**Email:**")
+             st.markdown(f"### {current_profile_data.get('email','—')}")
+             st.markdown("---")
+             if st.button("✏️ Edit Profile", use_container_width=True, type="primary"):
+                 st.session_state.view = 'student_profile' # Switch to edit mode
+                 st.session_state.pop('profile_page_loaded', None) # Ensure edit form reloads defaults
+                 st.rerun()
+
+
+        elif st.session_state.view == 'student_profile': # This is now the Edit Profile Form
              # --- Student Profile Completion/Edit Form ---
-             st.header(f"📝 Student Profile - {st.session_state.current_college_name}")
+             st.header(f"📝 Edit Profile - {st.session_state.current_college_name}")
              # Show warning if profile is incomplete (only in this view)
              if profile_incomplete_for_display:
                  st.warning("Please complete your profile details.")
 
              with st.container(border=True):
-                 st.subheader("👤 Complete/Edit Your Profile") # Update title to reflect editing capability
+                 st.subheader("👤 Update Your Profile Details") # Update title to reflect editing capability
                  st.info("Fields marked with * are required.")
                  with st.form("profile_form_student"):
                     # Populate defaults if profile exists
@@ -931,10 +962,10 @@ else: # User is logged in
                         if s_full_name and s_department:
                             if save_student_profile(st.session_state.current_user_id, s_full_name, s_department, s_branch, s_roll_number,s_email):
                                 st.success("Profile saved successfully!")
-                                # After saving, clear the loaded flag so defaults will apply next time
-                                if 'profile_page_loaded' in st.session_state:
-                                     del st.session_state.profile_page_loaded
-                                st.rerun() # Rerun to update the profile display (and keep on this page)
+                                # After saving, clear the loaded flag and switch to view profile mode
+                                st.session_state.pop('profile_page_loaded', None)
+                                st.session_state.view = 'student_view_profile' # Go back to view profile
+                                st.rerun()
 
                         else:
                             st.warning("Please fill all required fields (Full Name, Department).")
