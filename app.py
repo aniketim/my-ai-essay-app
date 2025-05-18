@@ -650,7 +650,7 @@ if not st.session_state.logged_in:
                     st.info("Create your student account to start.")
                     signup_username = st.text_input("Choose a Username", key="signup_uname_main", placeholder="e.g., Aniket Savardekar")
                     signup_password = st.text_input("Choose a Password", type="password", key="signup_pass_main", placeholder="Min. 6 characters")
-                    signup_college_name = st.text_input("Your College Name", key="signup_college_main", placeholder="e.g., University of Streamlit")
+                    signup_college_name = st.text_input("Enter Your College ID", key="signup_college_main", placeholder="Mention Your College Id ")
                     st.markdown("<br>", unsafe_allow_html=True)
                     signup_submitted = st.form_submit_button("📝 Create Account", use_container_width=True, type="primary")
                     if signup_submitted:
