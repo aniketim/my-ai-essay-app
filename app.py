@@ -430,7 +430,7 @@ def get_gemini_assessment(title, essay_markdown):
         return {"error": error_details, "raw_response": raw_resp_info} # Simplified error with details
 
 
-def process_and_submit_essay(student_user_id, title, essay_content_html):
+def process_and_submit_essay(student_user_id, title, essay_content_html_param): # Renamed parameter
     if student_user_id is None:
          print(f"[{datetime.now()}] process_and_submit_essay called with student_user_id = None. This is unexpected.") # Debug print
          st.error("Could not save essay: User session issue. Please try logging out and in again.") # Simplified user error
@@ -441,9 +441,10 @@ def process_and_submit_essay(student_user_id, title, essay_content_html):
 
     essay_markdown = ""
     # Ensure content is not just empty HTML tags
-    if essay_html_content and essay_html_content != "<p><br></p>" and essay_content_html.strip() != "<p></p>":
+    # *** USE THE PARAMETER NAME essay_content_html_param consistently ***
+    if essay_content_html_param and essay_content_html_param != "<p><br></p>" and essay_content_html_param.strip() != "<p></p>":
         try:
-            essay_markdown = md(essay_html_content)
+            essay_markdown = md(essay_content_html_param)
         except Exception as e_md:
             print(f"Error converting essay content to Markdown: {e_md}") # Log error
             essay_markdown = "<i>Error converting content.</i>" # Basic fallback
@@ -490,9 +491,8 @@ def process_and_submit_essay(student_user_id, title, essay_content_html):
 
 
     # Save the essay regardless of AI feedback success, if content and title are valid
-    # save_essay_submission is defined BEFORE this function
-    # Removed the callable check, relying on definition order
-    # The check for save_essay_submission being defined should now pass
+    # save_essay_submission is now defined BEFORE this function
+    # Removed the callable check as it seems to be part of the issue, relying on definition order
     print(f"[{datetime.now()}] DEBUG: Calling save_essay_submission...") # Debug print
     save_essay_submission(student_user_id, title, essay_markdown, ai_feedback_json_str, overall_rating)
     print(f"[{datetime.now()}] DEBUG: save_essay_submission called.") # Debug print
