@@ -815,9 +815,19 @@ else: # User is logged in
                             roll_number = report_item.get('student_roll_number', "N/A")
                             feedback_data = {}
                             ai_feedback_json = report_item.get('ai_feedback_json')
+                            # --- FIX FOR COLLEGE ADMIN DISPLAY ---
                             if ai_feedback_json:
-                                try: feedback_data = json.loads(ai_feedback_json)
-                                except json.JSONDecodeError: feedback_data = {"error": "Could not parse feedback."}
+                                if isinstance(ai_feedback_json, dict):
+                                    feedback_data = ai_feedback_json
+                                else:
+                                    try:
+                                        feedback_data = json.loads(ai_feedback_json)
+                                    except (TypeError, json.JSONDecodeError):
+                                        feedback_data = {"error": "Could not parse feedback."}
+                            else:
+                                feedback_data = {"error": "Feedback data not available."}
+                            # --- END FIX ---
+
                             rating_val = report_item.get('overall_rating', -1)
                             rating_display = "N/A" if rating_val == -1 else f"{rating_val:.0f}"
                             if isinstance(feedback_data, dict) and 'overall_rating' in feedback_data:
