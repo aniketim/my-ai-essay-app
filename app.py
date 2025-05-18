@@ -771,14 +771,21 @@ else: # User is logged in
                                 export_row = {'Full Name': row.get('student_full_name', ''),'Department': row.get('student_department', ''),'Branch': row.get('student_branch', ''),'Roll Number': row.get('student_roll_number', ''),'Username': row.get('student_username', ''),'Essay Title': row.get('essay_title', ''),'Submission Datetime': row.get('submission_time', ''),'Overall Rating (0-100)': "Not Rated" if row.get('overall_rating', -1) == -1 else row.get('overall_rating')}
                                 feedback_data_export = {}
                                 ai_feedback_json_export = row.get('ai_feedback_json')
+                                # --- FIX FOR COLLEGE ADMIN EXPORT ---
                                 if ai_feedback_json_export:
-                                    try:
-                                        feedback_data_export = json.loads(ai_feedback_json_export)
-                                        criteria_scores = feedback_data_export.get('criteria_scores', {})
+                                    if isinstance(ai_feedback_json_export, dict):
+                                        feedback_data_export = ai_feedback_json_export
+                                    else:
+                                        try:
+                                            feedback_data_export = json.loads(ai_feedback_json_export)
+                                        except (TypeError, json.JSONDecodeError):
+                                            feedback_data_export = {} # Default to empty dict on any parsing error
+                                    criteria_scores = feedback_data_export.get('criteria_scores', {})
+                                    # --- END FIX ---
+                                    if criteria_scores: # Ensure criteria_scores is not empty
                                         for crit, details in criteria_scores.items():
                                             crit_name_formatted = crit.replace('_', ' ').title() + " Score (0-10)"
                                             export_row[crit_name_formatted] = details.get('score', 'N/A')
-                                    except json.JSONDecodeError: pass
                                 export_data_list.append(export_row)
                             df_for_export = pd.DataFrame(export_data_list)
                             preferred_cols_order = ['Full Name', 'Department', 'Branch', 'Roll Number', 'Username', 'Essay Title', 'Submission Datetime', 'Overall Rating (0-100)']
