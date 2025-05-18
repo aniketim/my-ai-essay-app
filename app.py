@@ -262,7 +262,6 @@ def save_student_profile(user_id, full_name, department, branch, roll_number, em
         if cursor: cursor.close()
         if conn: conn.close()
 
-# --- ADDED save_essay_submission FUNCTION DEFINITION HERE ---
 def save_essay_submission(student_user_id, title, content_markdown, ai_feedback_json_str, overall_rating):
     """
     Inserts a new essay record into the essays table.
