@@ -377,40 +377,44 @@ def calculate_word_count(text):
 # --- AI Logic Functions (DEFINED BEFORE UI SECTIONS, BELOW AUTH FUNCTIONS) ---
 def get_gemini_assessment(title, essay_markdown):
     prompt = f"""
-    You are an AI assistant specialized in evaluating student essays.
+    You are an Excellent Writter and Copywrite Expert which has 20 years of experience in writing essays. You are specialized in evaluating student essays. You given a Title and Essay in Markdown format below, Asses Students Essay in Right manner.
     The essay title is: "{title}"
     The essay content (in Markdown) is:
     ---
     {essay_markdown}
     ---
-    Please assess the essay based on the following five criteria. For each, give a score from 0 to 10 (0 = very poor, 10 = excellent) and a brief justification:
+    Please assess the essay based on the following five criteria. For each, give a score from 0 to 100 (0 = very poor, 100 = excellent) and a brief justification:
 
-    1. Grammar (20%): spelling, punctuation, sentence structure, mechanics  
-    2. Relevancy and Cohesion with Title (25%): how well the content stays on topic and flows logically relative to the title  
-    3. Clarity and Content Development (25%): depth of ideas, supporting evidence, originality, and clarity of argument  
-    4. Sentence Formation (25%): variety and complexity of sentence structures, conciseness  
-    5. Formatting (10%): appropriate Markdown usage (headings, lists, blockquotes) and overall readability  
+    1. Grammar (20%): spelling, punctuation, sentence structure, mechanics of Writting. 
+    2. Relevancy and Cohesion with Title (25%): how well the content stays on topic mentioned  and flows logically relative to the title.  
+    3. Clarity and Content Development with respect to Title (25%): depth of ideas present in content, supporting evidence, originality, and clarity with relate to the title.  
+    4. Sentence Formation (20%): variety and complexity of sentence structures, conciseness. 
+    5. Formatting (10%): appropriate Markdown usage (headings, lists, blockquotes) and overall readability and Presentation.
 
     After scoring, also provide:
     - Overall Word Count  
-    - Overall Feedback: a concise summary (2 to 3 sentences) of the essays main strengths and areas to improve  
+    - Overall Feedback: a concise summary (4 to 6 sentences) of the essays main strengths and areas need to improve. 
     - Overall Rating: a single number from 0 to 100, computed by applying the above weights  
 
     Output **only** the following JSON object (no extra text), with all strings properly escaped:
 
     {{
       "criteria_scores": {{
-        "grammar": {{"score": <int_0_to_10>, "justification": "<string>"}},
-        "relevancy_and_cohesion": {{"score": <int_0_to_10>, "justification": "<string>"}},
-        "clarity_and_content_development": {{"score": <int_0_to_10>, "justification": "<string>"}},
-        "sentence_formation": {{"score": <int_0_to_10>, "justification": "<string>"}},
-        "formatting": {{"score": <int_0_to_10>, "justification": "<string>"}}
+        "grammar": {{"score": <int_0_to_100>, "justification": "<string>"}},
+        "relevancy_and_cohesion": {{"score": <int_0_to_100>, "justification": "<string>"}},
+        "clarity_and_content_development_with_respect_to_title": {{"score": <int_0_to_100>, "justification": "<string>"}},
+        "sentence_formation": {{"score": <int_0_to_100>, "justification": "<string>"}},
+        "formatting": {{"score": <int_0_to_100>, "justification": "<string>"}}
       }},
       "word_count": <int_word_count>,
       "overall_feedback": "<string>",
       "overall_rating": <int_0_to_100>
     }}
     """
+    response = gemini_model.generate_content(prompt)
+    response_text = response.text if hasattr(response, 'text') else ''
+    # JSON extraction logic unchanged...
+
     response = gemini_model.generate_content(prompt)
     # …rest of your parsing logic…
 
