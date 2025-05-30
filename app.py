@@ -558,7 +558,7 @@ if 'essay_title_input' not in st.session_state: st.session_state.essay_title_inp
 if 'essay_content_html' not in st.session_state: st.session_state.essay_content_html = ""
 if 'essay_started' not in st.session_state: st.session_state.essay_started = False
 if 'timer_start_time' not in st.session_state: st.session_state.timer_start_time = None
-if 'submission_time_limit_seconds' not in st.session_state: st.session_state.submission_time_limit_seconds = 15 * 60
+if 'submission_time_limit_seconds' not in st.session_state: st.session_state.submission_time_limit_seconds = 30 * 60
 if 'profile_page_loaded' not in st.session_state: st.session_state.profile_page_loaded = False
 
 
