@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
 import google.generativeai as genai
 import time
 from datetime import datetime, date
