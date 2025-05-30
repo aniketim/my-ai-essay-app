@@ -1002,7 +1002,7 @@ else: # User is logged in
                  time_remaining = st.session_state.submission_time_limit_seconds - time_elapsed
 
                 #✅ Add this line to stop flickering
-                if st.session_state.essay_started and time_remaining > 0:
+                 if st.session_state.essay_started and time_remaining > 0:
                     st_autorefresh(interval=1000, key="essay_timer_refresh")
                  
                  col_timer, col_wc, col_submit = st.columns([2,1,1]) # Define columns
