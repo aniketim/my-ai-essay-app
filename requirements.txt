@@ -6,3 +6,4 @@ openpyxl
 streamlit-quill
 markdownify
 psycopg2-binary
+streamlit-autorefresh
